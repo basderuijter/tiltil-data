@@ -57,6 +57,23 @@ Use it to set up the screen, test the scanner and train packers:
 DEMO_MODE=true PRINT_BACKEND=none .venv/bin/python -m uvicorn app.main:app --port 8000
 ```
 
+### Zebra ZD220 over USB
+
+The ZD220 is USB-only, so it has to hang off the machine that runs the Sendcloud
+Print Client — the same box this app runs on, in the simplest setup.
+
+Start with the defaults (`LABEL_MIME_TYPE=application/pdf`, `LABEL_DPI=72`).
+Sendcloud's A6 label is vector PDF, so the Windows driver scales it to the
+printer's 203 dpi without losing barcode sharpness.
+
+Only if labels scan poorly is it worth switching to `application/zpl`. ZPL goes
+to the printer untouched and is both sharper and faster, but it bypasses the
+driver: it needs a raw print queue (a "Generic / Text Only" queue, or ZDesigner
+with pass-through) rather than the normal ZDesigner driver.
+
+Set the label size to 102 x 150 mm in the driver and run the printer's
+calibration once, so it finds the gap between labels.
+
 ### Finding the printer id
 
 With the Sendcloud Print Client running, `GET /api/printers` (or

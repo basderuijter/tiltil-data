@@ -351,6 +351,42 @@ async def test_shipping_options_fall_back_to_the_configured_file(tmp_path):
     assert len(options) == 2
 
 
+@pytest.mark.asyncio
+@respx.mock
+async def test_contracts_are_flattened_for_the_setup_helper():
+    respx.get(f"{BASE}/v3/contracts").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "id": 60,
+                        "carrier": {"code": "postnl", "name": "PostNL"},
+                        "country_code": "NL",
+                        "is_default_per_carrier": True,
+                        "state": "active",
+                        "type": "direct",
+                    }
+                ]
+            },
+        )
+    )
+    client = await make_client()
+
+    contracts = await client.contracts()
+
+    assert contracts == [
+        {
+            "id": 60,
+            "carrier": "PostNL",
+            "name": "",
+            "country_code": "NL",
+            "is_default_per_carrier": True,
+            "state": "active",
+        }
+    ]
+
+
 # --- multicollo splitting ----------------------------------------------------
 
 

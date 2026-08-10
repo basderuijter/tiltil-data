@@ -41,7 +41,8 @@ horizontal swipe navigates back mid-scan.
 
 ## The barcode scanner
 
-Any USB scanner in keyboard-wedge mode works — that is the default on most.
+Any USB scanner in keyboard-wedge mode works — that is the default on most,
+Zebra included.
 The only requirement is that it sends a carriage return after the code; the scan
 screen submits on Enter. If your packing slips carry the order number as a
 Code128 barcode, nothing else needs configuring.
@@ -51,4 +52,5 @@ Code128 barcode, nothing else needs configuring.
 ```bash
 curl localhost:8000/api/health     # credentials + print backend
 curl localhost:8000/api/printers   # printer ids from the Print Client
+curl localhost:8000/api/contracts  # carrier contract ids, if you need to pin one
 ```

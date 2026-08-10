@@ -147,6 +147,19 @@ async def reprint(
     return {"printed": True}
 
 
+@app.get("/api/contracts")
+async def list_contracts(
+    settings: Settings = Depends(get_settings),
+    client: SendcloudClient = Depends(get_client),
+) -> list[dict]:
+    """Setup helper: find a CONTRACT_ID without digging through the panel."""
+    _require_credentials(settings)
+    try:
+        return await client.contracts()
+    except SendcloudError as exc:
+        raise HTTPException(status_code=502, detail=exc.message) from exc
+
+
 @app.get("/api/printers")
 async def list_printers(printer: Printer = Depends(get_printer)) -> list[dict[str, str]]:
     try:

@@ -33,6 +33,7 @@ CREATE_LABEL_SYNC = "/v3/orders/create-label-sync"
 CREATE_LABELS_ASYNC = "/v3/orders/create-labels-async"
 SHIPMENT = "/v3/shipments/{shipment_id}"
 ORDER = "/v3/orders/{order_id}"
+CONTRACTS = "/v3/contracts"
 # VERIFY: the list-orders-per-integration path and its search parameter.
 ORDERS_SEARCH = "/v3/orders"
 # VERIFY: shipping options is a POST that takes the route; shape unconfirmed.
@@ -317,6 +318,26 @@ class SendcloudClient:
             file_base64=base64.b64encode(content).decode(),
             tracking_number=parcel.get("tracking_number", ""),
         )
+
+    async def contracts(self) -> list[dict[str, Any]]:
+        """List the account's carrier contracts.
+
+        Only needed during setup, to find a CONTRACT_ID. Leaving that unset is
+        fine when there is one default contract per carrier — Sendcloud then
+        picks it automatically.
+        """
+        payload = await self._request("GET", CONTRACTS, params={"is_active": True})
+        return [
+            {
+                "id": contract.get("id"),
+                "carrier": (contract.get("carrier") or {}).get("name", ""),
+                "name": contract.get("name", ""),
+                "country_code": contract.get("country_code", ""),
+                "is_default_per_carrier": contract.get("is_default_per_carrier", False),
+                "state": contract.get("state", ""),
+            }
+            for contract in payload.get("data") or []
+        ]
 
     async def order_items(self, order_id: str) -> list[OrderItem]:
         """Fetch the items of an order, needed to split a multicollo shipment."""
