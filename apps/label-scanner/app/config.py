@@ -10,7 +10,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PrintBackend = Literal["sendcloud_client", "cups", "none"]
@@ -34,7 +34,22 @@ class Settings(BaseSettings):
     # application/pdf for a normal or A6 label printer, application/zpl for a
     # Zebra. ZPL is passed through to the printer untouched.
     label_mime_type: str = "application/pdf"
-    label_dpi: int = 203
+    # Sendcloud only accepts specific DPI values per format: 72 for PDF,
+    # 150/300 for PNG. ZPL ignores it — the carrier decides, usually 203.
+    label_dpi: int = 72
+
+    # --- Shipping --------------------------------------------------------------
+    # Let Sendcloud apply the shipping rules configured in the panel. Leave off
+    # when the packer's choice on screen should always win.
+    apply_shipping_rules: bool = False
+    # Optional: pin a carrier contract. Unset lets Sendcloud pick the default
+    # contract for the carrier behind the chosen shipping option.
+    contract_id: int | None = None
+    # Fallback list of shipping options, used when the shipping-options API is
+    # not reachable. Also the source for the printed barcode command sheet.
+    # JSON: [{"code": "postnl:standard", "name": "PostNL Standard",
+    #         "carrier": "postnl"}, ...]
+    shipping_options_file: Path | None = None
 
     # --- Printing --------------------------------------------------------------
     print_backend: PrintBackend = "sendcloud_client"
@@ -57,6 +72,19 @@ class Settings(BaseSettings):
     @property
     def has_credentials(self) -> bool:
         return bool(self.sendcloud_public_key and self.sendcloud_secret_key)
+
+    @model_validator(mode="after")
+    def _check_label_format(self) -> Settings:
+        """Reject DPI/format combinations Sendcloud would answer with a 400."""
+        allowed = {"application/pdf": {72}, "image/png": {150, 300}}
+        valid = allowed.get(self.label_mime_type)
+        if valid and self.label_dpi not in valid:
+            raise ValueError(
+                f"LABEL_DPI={self.label_dpi} is not valid for "
+                f"{self.label_mime_type}; Sendcloud accepts "
+                f"{sorted(valid)}. ZPL ignores the DPI setting."
+            )
+        return self
 
 
 @lru_cache

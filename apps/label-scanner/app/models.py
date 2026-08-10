@@ -5,22 +5,36 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 
-class ShippingMethod(BaseModel):
-    id: int
+class ShippingOption(BaseModel):
+    """A way to ship, identified by its v3 shipping_option_code."""
+
+    # e.g. "postnl:standard" or "postnl:letterbox". This is what the API wants,
+    # and what the barcode on the command sheet encodes.
+    code: str
     name: str
     carrier: str = ""
-    min_weight_kg: float | None = None
-    max_weight_kg: float | None = None
-    # True for the method that is already on the order in Sendcloud.
+    # Optional: Sendcloud picks the default contract for the carrier when unset.
+    contract_id: int | None = None
+    # True for the option that is already on the order in Sendcloud.
     is_current: bool = False
+
+
+class OrderItem(BaseModel):
+    """One product line, needed to split a multicollo shipment across boxes."""
+
+    item_id: str
+    quantity: int = 1
+    name: str = ""
 
 
 class Order(BaseModel):
     """An order imported into Sendcloud that has not been announced yet."""
 
-    # Sendcloud's own identifier, used when requesting the label.
+    # Sendcloud's own identifier.
     id: str
-    # The human number on the packing slip, i.e. what gets scanned.
+    # The human number on the packing slip, i.e. what gets scanned. This is
+    # also what identifies the order when requesting a label, so no id lookup
+    # is needed to announce.
     order_number: str
     recipient_name: str = ""
     company_name: str = ""
@@ -30,32 +44,27 @@ class Order(BaseModel):
     country_code: str = ""
     country_name: str = ""
     weight_kg: float | None = None
-    # The shipping method that came in with the order. May be absent when the
-    # webshop only sent a free-text shipping name.
-    current_shipping_method_id: int | None = None
-    current_shipping_method_name: str = ""
+    # The shipping option that came in with the order.
+    current_shipping_option_code: str = ""
+    current_shipping_option_name: str = ""
+    items: list[OrderItem] = Field(default_factory=list)
     # Set when the order already has a label, so the UI can warn before
     # accidentally announcing it twice.
     already_announced: bool = False
     tracking_numbers: list[str] = Field(default_factory=list)
 
     @property
-    def address_lines(self) -> list[str]:
-        lines = [self.recipient_name]
-        if self.company_name:
-            lines.append(self.company_name)
-        lines.append(self.address)
-        lines.append(f"{self.postal_code} {self.city}".strip())
-        lines.append(self.country_name or self.country_code)
-        return [line for line in lines if line]
+    def total_units(self) -> int:
+        return sum(item.quantity for item in self.items)
 
 
 class Label(BaseModel):
-    """A single printable label returned by Sendcloud."""
+    """A single printable label."""
 
     parcel_id: str
     mime_type: str
-    # Base64 payload exactly as Sendcloud returned it.
+    # Base64 payload, either as returned inline by Sendcloud or as downloaded
+    # from the parcel's document link.
     file_base64: str
     tracking_number: str = ""
 
@@ -63,10 +72,6 @@ class Label(BaseModel):
 class LabelResult(BaseModel):
     order_number: str
     labels: list[Label]
-    shipping_method_name: str
+    shipping_option_name: str
     printed: bool = False
     print_error: str = ""
-
-    @property
-    def tracking_numbers(self) -> list[str]:
-        return [label.tracking_number for label in self.labels if label.tracking_number]

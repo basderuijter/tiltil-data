@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 
 from . import demo
 from .config import Settings, get_settings
-from .models import LabelResult, Order, ShippingMethod
+from .models import LabelResult, Order, ShippingOption
 from .printing import PrintError, Printer
 from .sendcloud import OrderNotFound, SendcloudClient, SendcloudError
 
@@ -52,14 +52,14 @@ def get_printer(settings: Settings = Depends(get_settings)) -> Printer:
 
 class OrderResponse(BaseModel):
     order: Order
-    shipping_methods: list[ShippingMethod]
+    shipping_options: list[ShippingOption]
     max_parcels: int
     demo_mode: bool
 
 
 class LabelRequest(BaseModel):
     order_number: str
-    shipping_method_id: int
+    shipping_option_code: str
     quantity: int = Field(ge=1, le=20)
 
 
@@ -71,12 +71,12 @@ async def read_order(
 ) -> OrderResponse:
     if settings.demo_mode:
         order = demo.demo_order(order_number)
-        methods = demo.demo_shipping_methods(order)
+        options = demo.demo_shipping_options(order)
     else:
         _require_credentials(settings)
         try:
             order = await client.find_order(order_number)
-            methods = await client.shipping_methods(order)
+            options = await client.shipping_options(order)
         except OrderNotFound as exc:
             raise HTTPException(status_code=404, detail=exc.message) from exc
         except SendcloudError as exc:
@@ -84,7 +84,7 @@ async def read_order(
 
     return OrderResponse(
         order=order,
-        shipping_methods=methods,
+        shipping_options=options,
         max_parcels=settings.max_parcels,
         demo_mode=settings.demo_mode,
     )
@@ -99,15 +99,15 @@ async def create_labels(
 ) -> LabelResult:
     if settings.demo_mode:
         order = demo.demo_order(request.order_number)
-        methods = demo.demo_shipping_methods(order)
+        options = demo.demo_shipping_options(order)
         labels = demo.demo_labels(order, request.quantity)
     else:
         _require_credentials(settings)
         try:
             order = await client.find_order(request.order_number)
-            methods = await client.shipping_methods(order)
+            options = await client.shipping_options(order)
             labels = await client.create_labels(
-                order, request.shipping_method_id, request.quantity
+                order, request.shipping_option_code, request.quantity
             )
         except OrderNotFound as exc:
             raise HTTPException(status_code=404, detail=exc.message) from exc
@@ -120,7 +120,7 @@ async def create_labels(
     result = LabelResult(
         order_number=order.order_number or request.order_number,
         labels=labels,
-        shipping_method_name=_method_name(methods, request.shipping_method_id),
+        shipping_option_name=_option_name(options, request.shipping_option_code),
     )
 
     # The label exists in Sendcloud at this point. A printer that is offline
@@ -173,11 +173,11 @@ def _require_credentials(settings: Settings) -> None:
         )
 
 
-def _method_name(methods: list[ShippingMethod], method_id: int) -> str:
-    for method in methods:
-        if method.id == method_id:
-            return method.name
-    return str(method_id)
+def _option_name(options: list[ShippingOption], code: str) -> str:
+    for option in options:
+        if option.code == code:
+            return option.name
+    return code
 
 
 @app.get("/")

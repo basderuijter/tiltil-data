@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import base64
 
-from .models import Label, Order, ShippingMethod
+from .models import Label, Order, OrderItem, ShippingOption
 
 # A valid, minimal one-page PDF so the print path can be exercised end to end.
 _DEMO_PDF = base64.b64encode(
@@ -18,11 +18,11 @@ _DEMO_PDF = base64.b64encode(
     b"trailer<</Root 1 0 R>>\n%%EOF\n"
 ).decode()
 
-_METHODS = [
-    ShippingMethod(id=8, name="Unstamped letter", carrier="postnl"),
-    ShippingMethod(id=1675, name="PostNL Standard 0-23kg", carrier="postnl"),
-    ShippingMethod(id=1693, name="PostNL Pakje Gemak 0-23kg", carrier="postnl"),
-    ShippingMethod(id=2100, name="DHL Parcel Connect 0-31.5kg", carrier="dhl"),
+_OPTIONS = [
+    ShippingOption(code="postnl:letterbox", name="PostNL Brievenbuspakket", carrier="postnl"),
+    ShippingOption(code="postnl:standard", name="PostNL Standard", carrier="postnl"),
+    ShippingOption(code="postnl:service_point", name="PostNL Pakje Gemak", carrier="postnl"),
+    ShippingOption(code="dhl:parcel_connect", name="DHL Parcel Connect", carrier="dhl"),
 ]
 
 
@@ -37,18 +37,24 @@ def demo_order(order_number: str) -> Order:
         country_code="NL",
         country_name="Netherlands",
         weight_kg=2.5,
-        current_shipping_method_id=1675,
-        current_shipping_method_name="PostNL Standard 0-23kg",
+        current_shipping_option_code="postnl:standard",
+        current_shipping_option_name="PostNL Standard",
+        items=[
+            OrderItem(item_id="5552", quantity=2, name="Cylinder candle"),
+            OrderItem(item_id="5555", quantity=4, name="Linnen kussen"),
+        ],
     )
 
 
-def demo_shipping_methods(order: Order) -> list[ShippingMethod]:
-    methods = [
-        method.model_copy(update={"is_current": method.id == order.current_shipping_method_id})
-        for method in _METHODS
+def demo_shipping_options(order: Order) -> list[ShippingOption]:
+    options = [
+        option.model_copy(
+            update={"is_current": option.code == order.current_shipping_option_code}
+        )
+        for option in _OPTIONS
     ]
-    methods.sort(key=lambda m: (not m.is_current, m.carrier, m.name))
-    return methods
+    options.sort(key=lambda o: (not o.is_current, o.carrier, o.name))
+    return options
 
 
 def demo_labels(order: Order, quantity: int) -> list[Label]:

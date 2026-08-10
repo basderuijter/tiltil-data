@@ -22,33 +22,33 @@ def test_scan_returns_order_with_current_method_marked(client):
     payload = response.json()
     assert payload["order"]["order_number"] == "1042"
     assert payload["max_parcels"] == 4
-    current = [m for m in payload["shipping_methods"] if m["is_current"]]
+    current = [m for m in payload["shipping_options"] if m["is_current"]]
     assert len(current) == 1
-    assert current[0]["id"] == payload["order"]["current_shipping_method_id"]
+    assert current[0]["code"] == payload["order"]["current_shipping_option_code"]
     # The method already on the order is offered first, but every other method
     # stays selectable.
-    assert payload["shipping_methods"][0]["is_current"] is True
-    assert len(payload["shipping_methods"]) > 1
+    assert payload["shipping_options"][0]["is_current"] is True
+    assert len(payload["shipping_options"]) > 1
 
 
 def test_creating_labels_returns_one_label_per_parcel(client, tmp_path):
     response = client.post(
         "/api/labels",
-        json={"order_number": "1042", "shipping_method_id": 2100, "quantity": 3},
+        json={"order_number": "1042", "shipping_option_code": "dhl:parcel_connect", "quantity": 3},
     )
 
     assert response.status_code == 200
     payload = response.json()
     assert len(payload["labels"]) == 3
     assert payload["printed"] is True
-    assert payload["shipping_method_name"] == "DHL Parcel Connect 0-31.5kg"
+    assert payload["shipping_option_name"] == "DHL Parcel Connect"
     assert len(list(tmp_path.glob("*.pdf"))) == 3
 
 
 def test_quantity_must_be_at_least_one(client):
     response = client.post(
         "/api/labels",
-        json={"order_number": "1042", "shipping_method_id": 8, "quantity": 0},
+        json={"order_number": "1042", "shipping_option_code": "postnl:standard", "quantity": 0},
     )
 
     assert response.status_code == 422

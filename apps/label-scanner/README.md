@@ -19,10 +19,11 @@ comes out of the label printer.
    weight. The shipping method that came in with the order is shown and
    preselected, marked *staat in de order*; any other method can be tapped
    instead.
-3. **Announce + label.** Sendcloud API v3 creates the label and returns it
-   inline in the response (base64), so there is no second download step.
-   One parcel uses `create-label-sync`, multiple parcels use
-   `create-labels-async` (multicollo) and the app waits for the job.
+3. **Announce + label.** Sendcloud API v3 identifies the order by the number on
+   the packing slip, so announcing needs no id lookup. One parcel goes through
+   `create-label-sync`, which returns the label inline as base64. More parcels
+   go through `create-labels-async`, which returns only ids; the app then polls
+   `GET /v3/shipments/{id}` and downloads a label per parcel.
 4. **Print.** The label is written to the spool directory and handed to the
    Sendcloud Print Client over its local HTTP API.
 
@@ -73,19 +74,38 @@ untouched.
 `deploy/` holds a systemd unit for the app and notes for running the browser in
 kiosk mode on the touch screen.
 
-## Before the first live run
+## Choosing the shipping method
 
-The Sendcloud developer portal was unreachable from the environment this was
-built in, so two request shapes are written from the documented v3 behaviour and
-are worth confirming against <https://sendcloud.dev> with a single test order:
+API v3 identifies a shipping method by its `shipping_option_code`, a string like
+`postnl:standard` or `postnl:letterbox` — not by a numeric id. The app gets the
+list of options from the shipping-options endpoint, and falls back to the JSON
+file in `SHIPPING_OPTIONS_FILE` when that lookup is unavailable. See
+`shipping-options.example.json`. That file is also the natural source for a
+printed barcode command sheet, since the barcode can hold the code verbatim.
 
-- the order-lookup endpoint (`GET /v3/orders?order_number=…`) — marked
-  `VERIFY:` in `app/sendcloud.py`. If v3 answers 400/404 the app falls back to
-  the long-standing `GET /v2/parcels?order_number=…`, so lookups keep working
-  either way.
-- the poll path for the multicollo job (`/v3/orders/create-labels-async/{id}`).
-  The app prefers the `status_url` from Sendcloud's own response when it
-  contains one.
+## Multicollo
+
+Sendcloud requires each box of a multicollo shipment to declare which items it
+holds, while the packer only tells us how many boxes there are. The app spreads
+the order's item units round-robin over the boxes: an arbitrary but complete
+split, which is what the carrier needs for the totals to add up. An order
+without item lines, or with fewer items than boxes, is refused with a message
+saying so rather than silently shipping something else.
+
+## Still to confirm
+
+Two endpoints are not covered by the documentation used to build this, and are
+marked `VERIFY:` in `app/sendcloud.py`:
+
+- **order lookup** (`GET /v3/orders?order_number=…`). Only used to show the
+  address before the packer commits — announcing works off the order number
+  regardless. Falls back to `GET /v2/parcels?order_number=…` on any 4xx.
+- **shipping options** (`POST /v3/shipping-options`). Falls back to
+  `SHIPPING_OPTIONS_FILE`.
+
+A third spot is a smaller guess: the parcel document link is documented as
+supporting several formats and DPIs without naming the parameters, so the app
+tries `?mime_type=&dpi=` and retries without them.
 
 Everything Sendcloud-specific lives in `app/sendcloud.py`; the endpoint
 constants are at the top of that file.

@@ -9,9 +9,9 @@ const $ = (id) => document.getElementById(id);
 
 const state = {
   order: null,
-  methods: [],
+  options: [],
   quantity: 1,
-  methodId: null,
+  optionCode: null,
   lastResult: null,
 };
 
@@ -80,9 +80,9 @@ document.addEventListener("click", () => {
 
 function renderOrder(data) {
   state.order = data.order;
-  state.methods = data.shipping_methods;
+  state.options = data.shipping_options;
   state.quantity = 1;
-  state.methodId = data.order.current_shipping_method_id ?? null;
+  state.optionCode = data.order.current_shipping_option_code || null;
 
   $("badge-demo").classList.toggle("hidden", !data.demo_mode);
   $("order-number").textContent = data.order.order_number || "—";
@@ -91,12 +91,12 @@ function renderOrder(data) {
     .join("<br />");
   $("warn-announced").classList.toggle("hidden", !data.order.already_announced);
 
-  $("current-method").textContent = data.order.current_shipping_method_name
-    ? `in de order: ${data.order.current_shipping_method_name}`
+  $("current-method").textContent = data.order.current_shipping_option_name
+    ? `in de order: ${data.order.current_shipping_option_name}`
     : "geen methode in de order";
 
   renderQuantities(data.max_parcels);
-  renderMethods();
+  renderOptions();
   updateCreateButton();
 }
 
@@ -126,14 +126,14 @@ function renderQuantities(max) {
   }
 }
 
-function renderMethods() {
+function renderOptions() {
   const container = $("method-buttons");
   container.innerHTML = "";
-  for (const method of state.methods) {
+  for (const method of state.options) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "tile";
-    button.setAttribute("aria-pressed", String(method.id === state.methodId));
+    button.setAttribute("aria-pressed", String(method.code === state.optionCode));
 
     const name = document.createElement("span");
     name.textContent = method.name;
@@ -141,7 +141,7 @@ function renderMethods() {
 
     const meta = document.createElement("span");
     meta.className = "tile__meta";
-    meta.textContent = [method.carrier, weightRange(method)].filter(Boolean).join(" · ");
+    meta.textContent = [method.carrier, method.code].filter(Boolean).join(" · ");
     if (method.is_current) {
       // Inline rather than a block badge, so every tile keeps the same height.
       const flag = document.createElement("span");
@@ -152,35 +152,30 @@ function renderMethods() {
     button.appendChild(meta);
 
     button.addEventListener("click", () => {
-      state.methodId = method.id;
-      renderMethods();
+      state.optionCode = method.code;
+      renderOptions();
       updateCreateButton();
     });
     container.appendChild(button);
   }
 }
 
-function weightRange(method) {
-  if (method.min_weight_kg == null && method.max_weight_kg == null) return "";
-  return `${method.min_weight_kg ?? 0}–${method.max_weight_kg ?? "?"} kg`;
-}
-
 function updateCreateButton() {
   const button = $("btn-create");
-  button.disabled = !state.methodId;
-  button.textContent = state.methodId
+  button.disabled = !state.optionCode;
+  button.textContent = state.optionCode
     ? `${state.quantity} label${state.quantity > 1 ? "s" : ""} maken & printen`
     : "Kies een verzendmethode";
 }
 
 $("btn-create").addEventListener("click", async () => {
-  if (!state.methodId) return;
+  if (!state.optionCode) return;
   try {
     const result = await api("/api/labels", {
       method: "POST",
       body: JSON.stringify({
         order_number: state.order.order_number,
-        shipping_method_id: state.methodId,
+        shipping_option_code: state.optionCode,
         quantity: state.quantity,
       }),
     });
@@ -204,7 +199,7 @@ function renderResult(result) {
     ? `${result.labels.length} label${result.labels.length > 1 ? "s" : ""} geprint`
     : "Label gemaakt, printen mislukt";
   $("result-detail").textContent = printed
-    ? `${result.order_number} · ${result.shipping_method_name}`
+    ? `${result.order_number} · ${result.shipping_option_name}`
     : result.print_error;
 
   $("result-tracking").innerHTML = tracking
