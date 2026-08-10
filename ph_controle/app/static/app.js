@@ -1,4 +1,8 @@
-/* Controlescherm: scannen, corrigeren en de akkoordknop bewaken. */
+/* Controlescherm: scannen, corrigeren, en zo min mogelijk handelingen.
+   - Enter op een barcode telt één stuk.
+   - Een getal + Enter zet de laatst gescande regel ineens op dat aantal.
+   - F2 geeft akkoord; in snelmodus doet de laatste scan dat zelf.
+   - Esc brengt de focus altijd terug naar het scanveld. */
 (function () {
   const CONDITIES = [
     ["goed", "Goed"],
@@ -8,6 +12,7 @@
   ];
 
   const code = window.PH_CODE;
+  const snelmodus = window.PH_SNELMODUS === true;
   const dataElement = document.getElementById("controle-data");
   const tabel = document.querySelector("#regeltabel tbody");
   const scanveld = document.getElementById("scanveld");
@@ -17,6 +22,8 @@
   const akkoordredenen = document.getElementById("akkoordredenen");
 
   let controle = JSON.parse(dataElement.textContent);
+  let laatsteBarcode = null;
+  let bezig = false;
 
   function meld(tekst, soort) {
     scanmelding.textContent = tekst;
@@ -73,6 +80,17 @@
       });
       knoppen.appendChild(knop);
     });
+    if (regel.aantal_verwacht > 1 && regel.aantal_geteld < regel.aantal_verwacht) {
+      // Scheelt scannen bij meerdere stuks van hetzelfde artikel.
+      const alles = document.createElement("button");
+      alles.type = "button";
+      alles.className = "regelknop regelknop-breed";
+      alles.textContent = "alle " + regel.aantal_verwacht;
+      alles.addEventListener("click", function () {
+        zetRegel(regel.barcode, { aantal: regel.aantal_verwacht });
+      });
+      knoppen.appendChild(alles);
+    }
     rij.appendChild(maakCel(knoppen));
 
     const keuze = document.createElement("select");
@@ -137,7 +155,7 @@
     const antwoord = await fetch(pad, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(gegevens),
+      body: gegevens === undefined ? undefined : JSON.stringify(gegevens),
     });
     const inhoud = await antwoord.json().catch(function () {
       return {};
@@ -155,8 +173,10 @@
         Object.assign({ barcode: barcode }, wijziging)
       );
       controle = inhoud.controle;
+      laatsteBarcode = barcode;
       teken();
       meld("Regel bijgewerkt.", "info");
+      await misschienAfronden();
     } catch (fout) {
       meld(fout.message, "fout");
     }
@@ -169,6 +189,7 @@
         barcode: barcode,
       });
       controle = inhoud.controle;
+      if (inhoud.scan.status === "geteld") laatsteBarcode = barcode;
       teken();
       const soort =
         inhoud.scan.status === "geteld"
@@ -177,17 +198,60 @@
           ? "let-op"
           : "fout";
       meld(inhoud.scan.melding, soort);
+      await misschienAfronden();
     } catch (fout) {
       meld(fout.message, "fout");
     }
     focusScan();
   }
 
+  async function geefAkkoord(automatisch) {
+    if (bezig) return;
+    if (!controle.mag_akkoord) {
+      meld("Akkoord kan nog niet: " + controle.redenen.join(" "), "let-op");
+      return;
+    }
+    bezig = true;
+    meld(automatisch ? "Compleet — afmelden en pakbon printen…" : "Akkoord geven…", "ok");
+    try {
+      const inhoud = await stuur("/api/ph/" + encodeURIComponent(code) + "/akkoord");
+      window.location.href = inhoud.pakbon_url;
+    } catch (fout) {
+      bezig = false;
+      meld(fout.message, "fout");
+      focusScan();
+    }
+  }
+
+  function misschienAfronden() {
+    // Snelmodus: de scan die de order compleet maakt, rondt hem ook af.
+    if (snelmodus && controle.mag_akkoord) return geefAkkoord(true);
+    return Promise.resolve();
+  }
+
   scanformulier.addEventListener("submit", function (gebeurtenis) {
     gebeurtenis.preventDefault();
-    const barcode = scanveld.value.trim();
+    const invoer = scanveld.value.trim();
     scanveld.value = "";
-    if (barcode) verwerkScan(barcode);
+    if (!invoer) return;
+
+    // Alleen cijfers en kort: bedoeld als aantal voor de laatst gescande regel.
+    if (/^\d{1,3}$/.test(invoer) && laatsteBarcode && !controle.regels.some(function (r) {
+      return r.barcode === invoer;
+    })) {
+      zetRegel(laatsteBarcode, { aantal: parseInt(invoer, 10) });
+      return;
+    }
+    verwerkScan(invoer);
+  });
+
+  document.addEventListener("keydown", function (gebeurtenis) {
+    if (gebeurtenis.key === "F2") {
+      gebeurtenis.preventDefault();
+      geefAkkoord(false);
+    } else if (gebeurtenis.key === "Escape") {
+      focusScan();
+    }
   });
 
   // De scanner tikt razendsnel; het veld moet daarom vrijwel altijd focus houden.

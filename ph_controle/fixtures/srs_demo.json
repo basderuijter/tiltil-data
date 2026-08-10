@@ -37,6 +37,37 @@
       ]
     },
     {
+      "code": "G-PH.04",
+      "order_referentie": "WEB-104930",
+      "order_id": "104930",
+      "klant": "Fleur Nieuwenhuis",
+      "adres": "Stationsweg 88",
+      "postcode_plaats": "9711 AA Groningen",
+      "land": "Nederland",
+      "verzendmethode": "PostNL standaard",
+      "orderdatum": "09-08-2026",
+      "srs_status": "open",
+      "regels": [
+        {"barcode": "8719325500118", "sku": "SIE-ARMBAND-2", "omschrijving": "Armband zilver fijn", "aantal_besteld": 1, "aantal_in_ph": 1, "picklocatie": "G.E.05"}
+      ]
+    },
+    {
+      "code": "G-PH.07",
+      "order_referentie": "WEB-104946",
+      "order_id": "104946",
+      "klant": "Ilse Molenaar",
+      "adres": "Kerkstraat 21",
+      "postcode_plaats": "5611 GH Eindhoven",
+      "land": "Nederland",
+      "verzendmethode": "DHL pakket",
+      "orderdatum": "10-08-2026",
+      "srs_status": "open",
+      "regels": [
+        {"barcode": "8719325600115", "sku": "CLO-JURK-40", "omschrijving": "Jurk linnen zwart 40", "aantal_besteld": 1, "aantal_in_ph": 1, "picklocatie": "G.B.11"},
+        {"barcode": "8719325600122", "sku": "ACC-TAS-04", "omschrijving": "Schoudertas leer cognac", "aantal_besteld": 1, "aantal_in_ph": 0, "picklocatie": "G.D.02"}
+      ]
+    },
+    {
       "code": "K-PH.05",
       "order_referentie": "WEB-104915",
       "order_id": "104915",
@@ -66,6 +97,22 @@
       "regels": [
         {"barcode": "8719325400115", "sku": "HOME-SCHAAL-L", "omschrijving": "Schaal keramiek L", "aantal_besteld": 1, "aantal_in_ph": 0, "picklocatie": "K.C.09"},
         {"barcode": "8719325400122", "sku": "HOME-DIENBLAD", "omschrijving": "Dienblad mangohout", "aantal_besteld": 1, "aantal_in_ph": 0, "picklocatie": "K.C.11"}
+      ]
+    },
+    {
+      "code": "K-PH.09",
+      "order_referentie": "WEB-104958",
+      "order_id": "104958",
+      "klant": "Diane Vos",
+      "adres": "Havenkade 6",
+      "postcode_plaats": "8861 AB Harlingen",
+      "land": "Nederland",
+      "verzendmethode": "PostNL standaard",
+      "orderdatum": "09-08-2026",
+      "srs_status": "open",
+      "opmerking": "Tweede kussen per ongeluk meegepickt?",
+      "regels": [
+        {"barcode": "8719325301129", "sku": "HOME-KUSSEN-02", "omschrijving": "Kussenhoes 45x45 sage", "aantal_besteld": 1, "aantal_in_ph": 2, "picklocatie": "K.D.18"}
       ]
     }
   ]

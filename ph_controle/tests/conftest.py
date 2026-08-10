@@ -20,6 +20,12 @@ def instellingen(tmp_path: Path) -> Instellingen:
         srs_backend="mock",
         fixture_bestand=BASIS / "fixtures" / "srs_demo.json",
         database=tmp_path / "controles.db",
+        hal_bestand=tmp_path / "hal-bestaat-niet.json",
+        letop_uren=4,
+        vastloper_uren=24,
+        stilstand_uren=8,
+        snelmodus=True,
+        auto_start=True,
     )
 
 
@@ -36,5 +42,5 @@ def opslag(instellingen: Instellingen) -> Opslag:
 
 
 @pytest.fixture
-def service(srs: MockSrsClient, opslag: Opslag) -> PhService:
-    return PhService(srs, opslag)
+def service(srs: MockSrsClient, opslag: Opslag, instellingen: Instellingen) -> PhService:
+    return PhService(srs, opslag, instellingen)

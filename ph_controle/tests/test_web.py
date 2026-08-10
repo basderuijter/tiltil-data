@@ -79,7 +79,7 @@ def test_onbekende_ph_geeft_404(client: TestClient):
 def test_gezondheid(client: TestClient):
     gegevens = client.get("/gezondheid").json()
     assert gegevens["srs"] == "ok"
-    assert gegevens["aantal_phs"] == 4
+    assert gegevens["aantal_phs"] == 7
 
 
 def test_scan_zonder_lopende_controle(client: TestClient):

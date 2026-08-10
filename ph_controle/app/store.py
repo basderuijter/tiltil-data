@@ -11,7 +11,7 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
-from .models import Controle, ControleRegel
+from .models import Controle, ControleRegel, Observatie, Onderzoek
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS controles (
@@ -26,6 +26,28 @@ CREATE TABLE IF NOT EXISTS controles (
     regels TEXT NOT NULL DEFAULT '[]'
 );
 CREATE INDEX IF NOT EXISTS idx_controles_ph ON controles (ph_code);
+
+CREATE TABLE IF NOT EXISTS ph_observaties (
+    ph_code TEXT PRIMARY KEY,
+    order_referentie TEXT NOT NULL DEFAULT '',
+    eerst_gezien TEXT NOT NULL,
+    laatst_gewijzigd TEXT NOT NULL,
+    vingerafdruk TEXT NOT NULL DEFAULT '',
+    compleet_sinds TEXT
+);
+
+CREATE TABLE IF NOT EXISTS onderzoeken (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ph_code TEXT NOT NULL,
+    reden TEXT NOT NULL DEFAULT '',
+    notitie TEXT NOT NULL DEFAULT '',
+    geopend_op TEXT NOT NULL,
+    geopend_door TEXT NOT NULL DEFAULT '',
+    opgelost_op TEXT,
+    opgelost_door TEXT NOT NULL DEFAULT '',
+    oplossing TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_onderzoeken_ph ON onderzoeken (ph_code);
 
 CREATE TABLE IF NOT EXISTS gebeurtenissen (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -93,6 +115,27 @@ class Opslag:
         ).fetchone()
         return self._naar_controle(rij) if rij else None
 
+    def laatste_controles(self) -> dict[str, Controle]:
+        """De meest recente controle per PH — in één query voor het overzicht."""
+        rijen = self._verbinding.execute(
+            "SELECT * FROM controles WHERE id IN"
+            " (SELECT MAX(id) FROM controles GROUP BY ph_code)"
+        ).fetchall()
+        return {rij["ph_code"]: self._naar_controle(rij) for rij in rijen}
+
+    def controletijden(self, sinds: datetime) -> list[float]:
+        """Doorlooptijd in seconden van de controles die sinds dat moment akkoord kregen."""
+        rijen = self._verbinding.execute(
+            "SELECT gestart_op, akkoord_op FROM controles WHERE akkoord_op IS NOT NULL"
+            " AND akkoord_op >= ?",
+            (sinds.isoformat(timespec="seconds"),),
+        ).fetchall()
+        return [
+            (datetime.fromisoformat(r["akkoord_op"]) - datetime.fromisoformat(r["gestart_op"]))
+            .total_seconds()
+            for r in rijen
+        ]
+
     def haal_controle(self, controle_id: int) -> Controle | None:
         rij = self._verbinding.execute(
             "SELECT * FROM controles WHERE id = ?", (controle_id,)
@@ -147,6 +190,143 @@ class Opslag:
             akkoord_door=rij["akkoord_door"],
             afwijking_notitie=rij["afwijking_notitie"],
             regels=_regels_uit_json(rij["regels"]),
+        )
+
+    # -- observaties -----------------------------------------------------
+
+    def observatie(self, ph_code: str) -> Observatie | None:
+        rij = self._verbinding.execute(
+            "SELECT * FROM ph_observaties WHERE ph_code = ?", (ph_code,)
+        ).fetchone()
+        return self._naar_observatie(rij) if rij else None
+
+    def observaties(self) -> dict[str, Observatie]:
+        rijen = self._verbinding.execute("SELECT * FROM ph_observaties").fetchall()
+        return {rij["ph_code"]: self._naar_observatie(rij) for rij in rijen}
+
+    def noteer_waarneming(
+        self,
+        ph_code: str,
+        *,
+        order_referentie: str,
+        vingerafdruk: str,
+        is_compleet: bool,
+        moment: datetime,
+    ) -> Observatie:
+        """Werk bij wat we van deze PH zien; houdt vast wanneer er iets veranderde."""
+        bestaand = self.observatie(ph_code)
+
+        if bestaand is None:
+            observatie = Observatie(
+                ph_code=ph_code,
+                eerst_gezien=moment,
+                laatst_gewijzigd=moment,
+                vingerafdruk=vingerafdruk,
+                compleet_sinds=moment if is_compleet else None,
+                order_referentie=order_referentie,
+            )
+        else:
+            veranderd = bestaand.vingerafdruk != vingerafdruk
+            nieuwe_order = bestaand.order_referentie != order_referentie
+            observatie = Observatie(
+                ph_code=ph_code,
+                # Andere order in dezelfde PH = een nieuwe klok.
+                eerst_gezien=moment if nieuwe_order else bestaand.eerst_gezien,
+                laatst_gewijzigd=moment if (veranderd or nieuwe_order) else bestaand.laatst_gewijzigd,
+                vingerafdruk=vingerafdruk,
+                compleet_sinds=(
+                    (moment if (bestaand.compleet_sinds is None or nieuwe_order) else bestaand.compleet_sinds)
+                    if is_compleet
+                    else None
+                ),
+                order_referentie=order_referentie,
+            )
+
+        self._verbinding.execute(
+            "INSERT INTO ph_observaties (ph_code, order_referentie, eerst_gezien,"
+            " laatst_gewijzigd, vingerafdruk, compleet_sinds) VALUES (?, ?, ?, ?, ?, ?)"
+            " ON CONFLICT(ph_code) DO UPDATE SET order_referentie = excluded.order_referentie,"
+            " eerst_gezien = excluded.eerst_gezien, laatst_gewijzigd = excluded.laatst_gewijzigd,"
+            " vingerafdruk = excluded.vingerafdruk, compleet_sinds = excluded.compleet_sinds",
+            (
+                observatie.ph_code,
+                observatie.order_referentie,
+                observatie.eerst_gezien.isoformat(timespec="seconds"),
+                observatie.laatst_gewijzigd.isoformat(timespec="seconds"),
+                observatie.vingerafdruk,
+                observatie.compleet_sinds.isoformat(timespec="seconds")
+                if observatie.compleet_sinds
+                else None,
+            ),
+        )
+        self._verbinding.commit()
+        return observatie
+
+    def _naar_observatie(self, rij: sqlite3.Row) -> Observatie:
+        return Observatie(
+            ph_code=rij["ph_code"],
+            order_referentie=rij["order_referentie"],
+            eerst_gezien=datetime.fromisoformat(rij["eerst_gezien"]),
+            laatst_gewijzigd=datetime.fromisoformat(rij["laatst_gewijzigd"]),
+            vingerafdruk=rij["vingerafdruk"],
+            compleet_sinds=datetime.fromisoformat(rij["compleet_sinds"])
+            if rij["compleet_sinds"]
+            else None,
+        )
+
+    # -- onderzoeken -----------------------------------------------------
+
+    def open_onderzoek(self, ph_code: str) -> Onderzoek | None:
+        rij = self._verbinding.execute(
+            "SELECT * FROM onderzoeken WHERE ph_code = ? AND opgelost_op IS NULL"
+            " ORDER BY id DESC LIMIT 1",
+            (ph_code,),
+        ).fetchone()
+        return self._naar_onderzoek(rij) if rij else None
+
+    def open_onderzoeken(self) -> list[Onderzoek]:
+        rijen = self._verbinding.execute(
+            "SELECT * FROM onderzoeken WHERE opgelost_op IS NULL ORDER BY geopend_op"
+        ).fetchall()
+        return [self._naar_onderzoek(rij) for rij in rijen]
+
+    def start_onderzoek(self, onderzoek: Onderzoek) -> Onderzoek:
+        cursor = self._verbinding.execute(
+            "INSERT INTO onderzoeken (ph_code, reden, notitie, geopend_op, geopend_door)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (
+                onderzoek.ph_code,
+                onderzoek.reden,
+                onderzoek.notitie,
+                onderzoek.geopend_op.isoformat(timespec="seconds"),
+                onderzoek.geopend_door,
+            ),
+        )
+        self._verbinding.commit()
+        onderzoek.id = int(cursor.lastrowid)
+        return onderzoek
+
+    def rond_onderzoek_af(
+        self, onderzoek_id: int, *, oplossing: str, door: str, moment: datetime
+    ) -> None:
+        self._verbinding.execute(
+            "UPDATE onderzoeken SET opgelost_op = ?, opgelost_door = ?, oplossing = ?"
+            " WHERE id = ?",
+            (moment.isoformat(timespec="seconds"), door, oplossing, onderzoek_id),
+        )
+        self._verbinding.commit()
+
+    def _naar_onderzoek(self, rij: sqlite3.Row) -> Onderzoek:
+        return Onderzoek(
+            id=int(rij["id"]),
+            ph_code=rij["ph_code"],
+            reden=rij["reden"],
+            notitie=rij["notitie"],
+            geopend_op=datetime.fromisoformat(rij["geopend_op"]),
+            geopend_door=rij["geopend_door"],
+            opgelost_op=datetime.fromisoformat(rij["opgelost_op"]) if rij["opgelost_op"] else None,
+            opgelost_door=rij["opgelost_door"],
+            oplossing=rij["oplossing"],
         )
 
     # -- audittrail ------------------------------------------------------

@@ -12,6 +12,8 @@
   <div class="wrap">
     <a href="/" style="text-decoration:none;color:inherit" class="merk">Things I Like Things I Love<span> · PH-controle</span></a>
     <nav>
+      <a class="navlink{% if request.url.path == '/' %} navlink-actief{% endif %}" href="/">Overzicht</a>
+      <a class="navlink{% if request.url.path == '/hal' %} navlink-actief{% endif %}" href="/hal">Hal</a>
       <form method="post" action="/medewerker" style="display:flex;gap:.5rem;align-items:center">
         <label class="label" for="naamveld">Medewerker</label>
         <input type="text" id="naamveld" name="naam" value="{{ medewerker }}" placeholder="je naam" autocomplete="off">

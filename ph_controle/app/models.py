@@ -89,6 +89,42 @@ class ControleRegel:
 
 
 @dataclass
+class Observatie:
+    """Wat de app door de tijd heen van een PH heeft gezien.
+
+    SRS geeft geen historie mee, dus houden we zelf bij sinds wanneer een PH
+    gevuld is en wanneer er voor het laatst iets veranderde. Daarmee zien we
+    of een order stilligt.
+    """
+
+    ph_code: str
+    eerst_gezien: datetime
+    laatst_gewijzigd: datetime
+    vingerafdruk: str = ""
+    compleet_sinds: datetime | None = None
+    order_referentie: str = ""
+
+
+@dataclass
+class Onderzoek:
+    """Een PH die uitgezocht moet worden, met wie het oppakt en de afloop."""
+
+    ph_code: str
+    reden: str
+    geopend_op: datetime
+    geopend_door: str = ""
+    notitie: str = ""
+    opgelost_op: datetime | None = None
+    opgelost_door: str = ""
+    oplossing: str = ""
+    id: int | None = None
+
+    @property
+    def is_open(self) -> bool:
+        return self.opgelost_op is None
+
+
+@dataclass
 class Controle:
     """Controlesessie van één PH door één medewerker."""
 

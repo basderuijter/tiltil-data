@@ -21,14 +21,41 @@
     </div>
     <div>
       <span class="label">Status in SRS</span>
-      <div style="margin-top:.25rem">{{ m.statuspil(status) }}</div>
-      <div class="stil">{{ status.aantal_in_ph }} van {{ status.aantal_besteld }} stuks in de PH</div>
+      <div style="margin-top:.25rem">{{ m.statuspil(status) }} {{ m.signaalpil(signaal) }}</div>
+      <div class="stil">{{ status.aantal_in_ph }} van {{ status.aantal_besteld }} stuks · ligt hier {{ signaal.leeftijd }}</div>
     </div>
   </div>
   {% if ph.opmerking %}
     <div class="melding melding-info" style="margin-bottom:0">Opmerking bij de order: {{ ph.opmerking }}</div>
   {% endif %}
 </div>
+
+{% if onderzoek %}
+  <div class="melding melding-fout">
+    <strong>In onderzoek sinds {{ onderzoek.geopend_op.strftime('%d-%m %H:%M') }}{% if onderzoek.geopend_door %} ({{ onderzoek.geopend_door }}){% endif %}.</strong>
+    {{ onderzoek.reden }}{% if onderzoek.notitie %} — {{ onderzoek.notitie }}{% endif %}
+  </div>
+  <div class="kaart niet-printen">
+    <h2>Onderzoek afronden</h2>
+    <form method="post" action="/ph/{{ ph.code }}/onderzoek/afronden" class="scanrij">
+      <div style="flex:1">
+        <input type="text" name="oplossing" style="width:100%" placeholder="wat was er aan de hand en hoe is het opgelost?" required>
+      </div>
+      <button class="knop" type="submit">Afronden</button>
+    </form>
+  </div>
+{% elif signaal.vraagt_aandacht %}
+  <div class="melding melding-let-op">
+    <strong>{{ signaal.label }}.</strong> {{ signaal.redenen | join(' ') }}
+    <form method="post" action="/ph/{{ ph.code }}/onderzoek" class="scanrij niet-printen" style="margin-top:.7rem">
+      <input type="hidden" name="reden" value="{{ signaal.redenen | join(' ') or 'Handmatig gemeld' }}">
+      <div style="flex:1">
+        <input type="text" name="notitie" style="width:100%" placeholder="notitie (optioneel)">
+      </div>
+      <button class="knop knop-stil" type="submit">Zet in onderzoek</button>
+    </form>
+  </div>
+{% endif %}
 
 {% if not status.mag_uit_ph %}
   <div class="melding melding-let-op">
@@ -47,7 +74,7 @@
       {% endfor %}
     </ul>
   </div>
-{% else %}
+{% elif not controle %}
   <div class="melding melding-ok"><strong>Compleet volgens SRS.</strong> Controleer de order en de staat van de producten, geef daarna akkoord.</div>
 {% endif %}
 
@@ -56,7 +83,7 @@
     <h2>Akkoord gegeven</h2>
     <p class="stil">Door {{ controle.akkoord_door }} op {{ controle.akkoord_op.strftime('%d-%m-%Y %H:%M') }}. De producten mogen uit de PH.</p>
     <a class="knop knop-accent" href="/ph/{{ ph.code }}/pakbon?direct=1">Pakbon printen</a>
-    <a class="knop knop-stil" href="/">Terug naar overzicht</a>
+    <a class="knop knop-stil" href="/hal">Terug naar de hal</a>
   </div>
 
 {% elif not controle %}
@@ -74,7 +101,19 @@
 
 {% else %}
   <div class="kaart niet-printen">
-    <h2>Scannen</h2>
+    <div style="display:flex;align-items:baseline;gap:1rem;flex-wrap:wrap">
+      <h2 style="margin:0">Scannen</h2>
+      <form method="post" action="/snelmodus" style="margin-left:auto;display:flex;gap:.5rem;align-items:center">
+        <input type="hidden" name="terug" value="/ph/{{ ph.code }}">
+        <input type="hidden" name="aan" value="{{ '0' if snelmodus else '1' }}">
+        <span class="label">Snelmodus</span>
+        <button class="knop {{ 'knop-akkoord' if snelmodus else 'knop-stil' }}" type="submit">{{ 'aan' if snelmodus else 'uit' }}</button>
+      </form>
+    </div>
+    <p class="mini" style="margin:.3rem 0 .8rem">
+      {% if snelmodus %}Laatste scan rondt de controle zelf af: akkoord, afmelding in SRS en pakbon.{% else %}Akkoord geef je zelf met F2.{% endif %}
+      Sneltoetsen: <strong>Enter</strong> tellen · <strong>cijfer + Enter</strong> aantal ineens · <strong>F2</strong> akkoord · <strong>Esc</strong> terug naar het scanveld.
+    </p>
     <form id="scanformulier" class="scanrij" autocomplete="off">
       <div style="flex:1">
         <span class="label">Barcode</span><br>
@@ -92,7 +131,7 @@
         <th>Artikel</th>
         <th>Barcode</th>
         <th class="rechts">Geteld</th>
-        <th style="width:110px"></th>
+        <th style="width:150px"></th>
         <th style="width:170px">Staat</th>
         <th>Notitie</th>
       </tr>
@@ -110,18 +149,18 @@
         <span class="label">Akkoord door</span><br>
         <input type="text" name="naam" value="{{ medewerker or controle.medewerker }}" placeholder="je naam" autocomplete="off" required>
       </div>
-      <button class="knop knop-akkoord" id="akkoordknop" type="submit" disabled>Akkoord · pakbon printen</button>
+      <button class="knop knop-akkoord" id="akkoordknop" type="submit" disabled>Akkoord · pakbon printen (F2)</button>
     </form>
     <p class="mini">Bij akkoord meldt de app de PH af in SRS en opent de pakbon in het printvenster.</p>
   </div>
 
   <div class="kaart niet-printen">
     <h2>Afwijking melden</h2>
-    <p class="stil">Klopt er iets niet (beschadigd, verkeerd artikel, ontbrekend)? Leg het vast; de PH blijft dan openstaan.</p>
+    <p class="stil">Klopt er iets niet (beschadigd, verkeerd artikel, ontbrekend)? Leg het vast; de PH gaat dan in onderzoek en blijft openstaan.</p>
     <form method="post" action="/ph/{{ ph.code }}/afwijking" class="scanrij">
       <div style="flex:1">
         <input type="text" name="notitie" style="width:100%" value="{{ controle.afwijking_notitie }}"
-               placeholder="wat is er aan de hand?">
+               placeholder="wat is er aan de hand?" required>
       </div>
       <button class="knop knop-stil" type="submit">Vastleggen</button>
     </form>
@@ -150,7 +189,10 @@
 {% block scripts %}
 {% if controle and not controle.is_akkoord %}
 <script id="controle-data" type="application/json">{{ controle_json | tojson }}</script>
-<script>window.PH_CODE = {{ ph.code | tojson }};</script>
+<script>
+  window.PH_CODE = {{ ph.code | tojson }};
+  window.PH_SNELMODUS = {{ 'true' if snelmodus else 'false' }};
+</script>
 <script src="/static/app.js"></script>
 {% endif %}
 {% endblock %}

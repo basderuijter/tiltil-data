@@ -47,6 +47,26 @@ class Instellingen:
     database: Path = field(
         default_factory=lambda: Path(os.environ.get("PH_DB", BASIS / "data" / "controles.db"))
     )
+    hal_bestand: Path = field(
+        default_factory=lambda: Path(
+            os.environ.get("HAL_INDELING", BASIS / "config" / "hal.json")
+        )
+    )
+
+    # --- Signalering: wanneer vraagt een PH aandacht of loopt hij vast? ---
+    letop_uren: float = field(default_factory=lambda: float(os.environ.get("PH_LETOP_UREN", "4")))
+    vastloper_uren: float = field(
+        default_factory=lambda: float(os.environ.get("PH_VASTLOPER_UREN", "24"))
+    )
+    stilstand_uren: float = field(
+        default_factory=lambda: float(os.environ.get("PH_STILSTAND_UREN", "8"))
+    )
+
+    # --- Snelheid ---
+    # Laatste scan = klaar: akkoord, SRS-afmelding en pakbon gaan vanzelf.
+    snelmodus: bool = field(default_factory=lambda: _bool("PH_SNELMODUS", True))
+    # Controlescherm meteen openen als de medewerker bekend is.
+    auto_start: bool = field(default_factory=lambda: _bool("PH_AUTO_START", True))
 
     # Gegevens op de pakbon
     bedrijfsnaam: str = field(

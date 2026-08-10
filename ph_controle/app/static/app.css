@@ -10,6 +10,7 @@
   --sage: #a0a48a;
   --donker-sage: #6e7f78;
   --blauw-sage: #b5c7c2;
+  --beige: #d5cec8;
   --rood: #c44e3f;
 }
 
@@ -130,6 +131,61 @@ tbody tr.regel-probleem td { background: #f3e2de; }
 .pil-leeg { background: var(--blauw-sage); color: var(--tekst); }
 .pil-afgerond { background: var(--donker-sage); color: #fff; }
 .pil-bezig { background: var(--blauw-sage); color: var(--tekst); }
+.pil-let_op { background: var(--terra); color: #fff; }
+.pil-vastloper { background: var(--rood); color: #fff; }
+.pil-normaal { background: var(--lijn); color: var(--tekst-mid); }
+
+.navlink {
+  font-family: "Poppins", system-ui, sans-serif;
+  font-size: 0.8rem;
+  text-decoration: none;
+  color: var(--tekst-mid);
+  padding: 0.3rem 0;
+  border-bottom: 2px solid transparent;
+}
+.navlink-actief { color: var(--tekst); border-bottom-color: var(--terra); }
+
+.scanbalk { display: flex; gap: 0.8rem; align-items: center; flex-wrap: wrap; }
+.scanbalk input[type="text"] { flex: 1; min-width: 240px; font-size: 1.05rem; padding: 0.6rem 0.8rem; }
+
+/* Plattegrond van de hal */
+.legenda { display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; margin: 0.4rem 0 0.2rem; }
+.legenda-item { display: flex; align-items: center; gap: 0.35rem; font-size: 0.78rem; color: var(--tekst-mid); }
+.vak-kleur { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }
+
+.vakkenraster {
+  display: grid;
+  grid-template-columns: repeat(var(--kolommen, 10), minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 0.6rem;
+}
+
+.vak {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-height: 74px;
+  padding: 0.5rem 0.55rem;
+  border-radius: 5px;
+  text-decoration: none;
+  color: var(--tekst);
+  background: var(--card);
+  border: 1px solid transparent;
+  overflow: hidden;
+}
+a.vak:hover { border-color: var(--tekst); }
+
+.vak-nummer { font-family: "Poppins", system-ui, sans-serif; font-weight: 600; font-size: 0.95rem; }
+.vak-order { font-size: 0.74rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vak-detail { font-size: 0.7rem; opacity: 0.75; margin-top: auto; }
+
+.vak-beschikbaar { background: #ebe8e6; color: var(--tekst-licht); }
+.vak-vullend { background: var(--blauw-sage); }
+.vak-klaar { background: var(--sage); color: #fff; }
+.vak-in_controle { background: var(--donker-sage); color: #fff; }
+.vak-let_op { background: var(--terra); color: #fff; }
+.vak-vastloper { background: var(--rood); color: #fff; }
+.vak-afgemeld { background: var(--beige, #d5cec8); color: var(--tekst); }
 
 .knop {
   display: inline-block;
@@ -176,6 +232,7 @@ input[type="text"], input[type="number"], select, textarea {
 .melding-fout { background: #f6ded9; border-left: 3px solid var(--rood); }
 .melding-info { background: var(--card); border-left: 3px solid var(--blauw-sage); }
 
+.nowrap { white-space: nowrap; }
 .stil { color: var(--tekst-mid); font-size: 0.88rem; }
 .mini { color: var(--tekst-licht); font-size: 0.78rem; }
 .rechts { text-align: right; }
@@ -192,6 +249,13 @@ input[type="text"], input[type="number"], select, textarea {
   font-size: 1rem;
   line-height: 1;
   cursor: pointer;
+}
+
+.regelknop-breed {
+  width: auto;
+  padding: 0 0.55rem;
+  font-family: "Poppins", system-ui, sans-serif;
+  font-size: 0.72rem;
 }
 
 .lijstje { margin: 0.3rem 0 0; padding-left: 1.1rem; }

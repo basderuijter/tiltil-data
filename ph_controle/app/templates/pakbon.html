@@ -2,9 +2,15 @@
 {% block titel %}Pakbon {{ ph.order_referentie }}{% endblock %}
 
 {% block inhoud %}
-<div class="niet-printen" style="display:flex;gap:.6rem;margin-bottom:1rem">
+<div class="niet-printen" style="display:flex;gap:.6rem;margin-bottom:1rem;align-items:center">
   <button class="knop knop-accent" onclick="window.print()">Printen</button>
-  <a class="knop knop-stil" href="/">Terug naar overzicht</a>
+  {% if volgende %}
+    <a class="knop knop-akkoord" id="volgendeknop" href="/ph/{{ volgende }}">Volgende PH: {{ volgende }} (F2)</a>
+  {% else %}
+    <span class="mini">Geen volgende PH die klaarstaat.</span>
+  {% endif %}
+  <a class="knop knop-stil" href="/hal">Hal</a>
+  <a class="knop knop-stil" href="/">Overzicht</a>
 </div>
 
 <article class="pakbon">
@@ -86,7 +92,17 @@
 {% endblock %}
 
 {% block scripts %}
-{% if automatisch_printen %}
-<script>window.addEventListener("load", function () { window.print(); });</script>
-{% endif %}
+<script>
+  {% if automatisch_printen %}
+  window.addEventListener("load", function () { window.print(); });
+  {% endif %}
+  // F2 gaat meteen door naar de volgende PH: printen, pakken, volgende.
+  document.addEventListener("keydown", function (gebeurtenis) {
+    const volgende = document.getElementById("volgendeknop");
+    if (gebeurtenis.key === "F2" && volgende) {
+      gebeurtenis.preventDefault();
+      window.location.href = volgende.getAttribute("href");
+    }
+  });
+</script>
 {% endblock %}

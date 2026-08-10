@@ -1,13 +1,15 @@
 # PH-controle
 
-Webapp voor het magazijn: laat zien of een **PH** (verzamellocatie van een
-webshoporder) compleet is, laat de order scannend controleren op aantallen én
-staat van de producten, en print na akkoord de pakbon. Bij akkoord meldt de app
-de PH af in SRS — dat is het moment waarop de producten uit de PH mogen.
+Webapp voor het magazijn: laat op een plattegrond van de pigeonhole-hal zien
+welke **PH** leeg is, welke gevuld wordt, welke klaarstaat en welke vastloopt.
+Een PH controleer je scannend op aantallen én staat van de producten; na akkoord
+meldt de app af in SRS — dat is het moment waarop de producten eruit mogen — en
+print de pakbon.
 
 ```
-SRS  ──►  overzicht PH's  ──►  controle (scannen + staat)  ──►  akkoord  ──►  pakbon printen
-                                                                   └──►  afmelding terug naar SRS
+SRS ─► hal / overzicht ─► scan PH-label ─► scannen ─► akkoord ─► pakbon
+        │                                                 └─► afmelding naar SRS
+        └─► vastlopers ─► onderzoek ─► opgelost
 ```
 
 ## Snel starten (demodata, zonder SRS)
@@ -18,9 +20,77 @@ python -m venv .venv && .venv/bin/pip install -r requirements.txt
 SRS_BACKEND=mock .venv/bin/python -m uvicorn app.main:maak_app --factory --port 8000
 ```
 
-Open http://localhost:8000. De mock leest `fixtures/srs_demo.json`: één complete
-PH, één met ontbrekende regels, één lege en één die klaar staat. Handig om mee
-te oefenen en om nieuwe medewerkers in te werken.
+Open http://localhost:8000/hal. De mock leest `fixtures/srs_demo.json`: complete
+PH's, incomplete, een lege en één met te veel voorraad. Wil je de signalering
+zien werken, draai dan `python scripts/demo_seed.py` — dat zet een paar
+waarnemingen terug in de tijd zodat er 'let op' en 'vastloper' in beeld komen.
+
+## Snelheid: waar zit de winst
+
+Het SRS-proces is: pigeonhole leeghalen, elk artikel één keer scannen, dan
+"scan oké". Deze app haalt daar de losse handelingen tussenuit:
+
+| Ingreep | Wat het scheelt |
+|---|---|
+| **Scan om te openen** | Scan het PH-label, de orderreferentie of een artikel op het overzicht of de plattegrond; het juiste scherm opent meteen. Geen zoeken in een lijst. |
+| **Controle start vanzelf** | Bij een complete PH staat het scanveld direct klaar (zolang je naam bekend is). Scheelt de stap 'controle starten'. |
+| **Snelmodus: laatste scan = klaar** | De scan die de order compleet maakt, geeft zelf akkoord, meldt af in SRS en opent de pakbon. Bij enkelstuksorders is de hele controle dus één scan. Uit te zetten met de knop *Snelmodus* op het controlescherm. |
+| **Cijfer + Enter** | Meerdere stuks van hetzelfde artikel: scan er één en typ het aantal (bijv. `3` + Enter). Ook een knop *alle 3* per regel. |
+| **Sneltoetsen** | `F2` akkoord, `Esc` terug naar het scanveld, `Enter` tellen. Het scanveld pakt automatisch de focus terug. |
+| **Volgende PH (F2)** | Na het printen wijst de pakbon meteen de eerstvolgende PH aan die klaarstaat; doorpakken zonder terug naar een lijst. |
+| **Doorlooptijd zichtbaar** | Het overzicht toont de gemiddelde controletijd van vandaag, zodat je ziet of het echt sneller gaat. |
+
+Zet Chrome op de pak-pc in kiosk-printing (`chrome --kiosk-printing --app=http://<server>:8000/hal`),
+dan gaat de pakbon zonder printdialoog rechtstreeks naar de standaardprinter —
+dat scheelt bij elke order nog een klik.
+
+Snelmodus blijft veilig: de app geeft alleen zelf akkoord als élke regel volledig
+geteld is *en* op "Goed" staat. Zodra je een afwijking aangeeft, stopt het
+automatische pad en gaat de PH in onderzoek.
+
+## Plattegrond van de hal
+
+`/hal` toont de wanden met alle vakken, kleur per toestand: leeg/beschikbaar,
+wordt gevuld, klaar om te controleren, in controle, let op, vastloper,
+gecontroleerd. Klik een vak en je zit in de details. Het scherm ververst zichzelf
+elke 15 seconden, dus het kan op een wandmonitor blijven staan.
+
+De indeling wordt afgeleid uit de PH-codes die SRS teruggeeft (`G-PH.01`,
+`K-PH.05`, …): per wand gegroepeerd, gaten in de nummering worden als lege
+vakken getoond. Wil je de echte indeling vastleggen, zet dan `config/hal.json`
+neer:
+
+```json
+{
+  "kolommen": 10,
+  "wanden": [
+    {"naam": "Gang G", "prefix": "G-PH", "van": 1, "tot": 24, "cijfers": 2},
+    {"naam": "Gang K", "prefix": "K-PH", "van": 1, "tot": 18}
+  ]
+}
+```
+
+PH's die SRS teruggeeft maar die niet in dat bestand staan, worden er alsnog
+bij getoond — een order mag nooit onzichtbaar zijn door een verouderde
+plattegrond.
+
+## Vastlopers en onderzoek
+
+SRS houdt geen historie bij van hoe lang een order in een PH ligt, dus de app
+kijkt zelf mee: sinds wanneer is de PH gevuld, wanneer veranderde er voor het
+laatst iets, en hoe lang staat een complete PH te wachten op controle.
+
+Een PH krijgt **let op** na 4 uur en wordt **vastloper** na 24 uur, of eerder
+als er 8 uur geen voortgang is (in te stellen met `PH_LETOP_UREN`,
+`PH_VASTLOPER_UREN`, `PH_STILSTAND_UREN`). Verder wordt een PH altijd een
+vastloper bij een gemelde afwijking, bij te veel voorraad in de bak en als de
+afmelding naar SRS mislukt.
+
+Vastlopers staan bovenaan het overzicht en in de lijst *Vraagt aandacht* onder
+de plattegrond, met de reden erbij ("Geen voortgang in 9 uur. Ontbreekt: Schaal
+keramiek L (0/1)"). Je zet zo'n PH in onderzoek met een notitie; hij blijft
+zichtbaar tot iemand het onderzoek afrondt met wat er aan de hand was. Een
+alsnog geslaagde controle rondt het onderzoek automatisch af.
 
 ## Draaien tegen de echte SRS
 
@@ -57,26 +127,17 @@ PH's terug. Dat is meteen een goede check voor monitoring.
 - **Akkoord kan alleen** als elke regel volledig geteld is *en* op "Goed" staat.
   Beschadigd, verkeerd artikel of ontbrekend blokkeert het akkoord.
 - Bij akkoord gaat eerst de afmelding naar SRS. Mislukt die, dan blijft de
-  controle openstaan en is er geen pakbon — nooit een pakbon zonder afmelding.
-- Alles wordt gelogd (start, scans, correcties, afwijkingen, akkoord) in
-  `data/controles.db`, zichtbaar als logboek onderaan het controlescherm.
-
-## Bediening in het magazijn
-
-Het scanveld houdt automatisch focus, dus een USB-scanner die als toetsenbord
-werkt (barcode + Enter) werkt zonder klikken. Met `−` / `+` corrigeer je een
-aantal handmatig, met de kolom *Staat* leg je vast dat een product beschadigd
-of verkeerd is. Klopt er iets niet, dan legt *Afwijking melden* dat vast en
-blijft de PH openstaan voor opvolging.
-
-De pakbon opent na akkoord direct in het printvenster (A4, huisstijl). Vanaf
-het overzicht kun je de pakbon van een afgemelde PH altijd opnieuw printen.
+  controle openstaan, komt de PH in onderzoek en is er geen pakbon — nooit een
+  pakbon zonder afmelding.
+- Alles wordt gelogd (start, scans, correcties, afwijkingen, onderzoek, akkoord)
+  in `data/controles.db`, zichtbaar als logboek onderaan het controlescherm.
 
 ## Instellingen
 
 Alles via omgevingsvariabelen; zie `.env.example` voor de volledige lijst.
-De belangrijkste: `SRS_BACKEND`, `SRS_BASE_URL`, `SRS_AUTH_TYPE`, `PH_DB`
-(pad naar de SQLite-database) en de `BEDRIJF_*`-velden die op de pakbon komen.
+De belangrijkste: `SRS_BACKEND`, `SRS_BASE_URL`, `SRS_AUTH_TYPE`, `PH_DB`,
+de drempels `PH_LETOP_UREN` / `PH_VASTLOPER_UREN` / `PH_STILSTAND_UREN`,
+`PH_SNELMODUS`, `PH_AUTO_START` en de `BEDRIJF_*`-velden op de pakbon.
 
 ## Tests
 
@@ -84,19 +145,23 @@ De belangrijkste: `SRS_BACKEND`, `SRS_BASE_URL`, `SRS_AUTH_TYPE`, `PH_DB`
 cd ph_controle && .venv/bin/python -m pytest
 ```
 
-De suite dekt de compleetheidsregels, de scan- en akkoordlogica, de webflow van
-scannen tot pakbon en de REST-mapping (met een nagebootste SRS-webservice).
+De suite dekt de compleetheidsregels, de scan- en akkoordlogica, de signalering
+van vastlopers, de plattegrond, de snelheidsingrepen (scan-to-open, auto-start,
+akkoord via de API) en de REST-mapping met een nagebootste SRS-webservice.
 
 ## Structuur
 
 ```
 app/completeness.py   compleetheids- en akkoordregels (pure logica)
-app/service.py        het proces: starten, scannen, corrigeren, akkoord
+app/signalen.py       let op / vastloper en de kleur van een vak (pure logica)
+app/hal.py            plattegrond: wanden, vakken, lege plekken
+app/service.py        het proces: openen, scannen, akkoord, onderzoek
 app/srs/              koppeling: base (protocol), mock (fixture), rest (webservice)
-app/store.py          SQLite: controles + audittrail
-app/main.py           FastAPI-routes en JSON-API voor het scanscherm
-app/templates/        overzicht, controlescherm, pakbon
+app/store.py          SQLite: controles, waarnemingen, onderzoeken, audittrail
+app/main.py           FastAPI-routes en JSON-API voor scanscherm en plattegrond
+app/templates/        hal, overzicht, controlescherm, pakbon
 config/srs_rest.json  endpoints en veldmapping van SRS
+scripts/demo_seed.py  demodata verouderen om de signalering te tonen
 ```
 
 ## Nog open

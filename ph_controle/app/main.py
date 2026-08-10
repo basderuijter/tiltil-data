@@ -1,7 +1,8 @@
-"""Webapp: PH-controle en pakbon.
+"""Webapp: PH-controle, hal-overzicht en pakbon.
 
 Bediening is scannergericht: het invoerveld houdt focus, de scanner tikt de
-barcode + Enter, de regel telt op. Muis is alleen nodig voor correcties.
+barcode + Enter, de regel telt op. In snelmodus rondt de laatste scan de
+controle helemaal af — akkoord, afmelding naar SRS en pakbon in één beweging.
 """
 
 from __future__ import annotations
@@ -13,16 +14,19 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .completeness import mag_akkoord, ph_status
+from .completeness import mag_akkoord
 from .config import Instellingen, laad_instellingen
 from .models import CONDITIE_LABELS, Controle, Ph
 from .service import ControleFout, PhService
+from .signalen import TOESTAND_LABELS
 from .srs import maak_client
 from .srs.base import PhNietGevonden, SrsClient, SrsFout
 from .store import Opslag
 
 HIER = Path(__file__).resolve().parent
 COOKIE_MEDEWERKER = "ph_medewerker"
+COOKIE_SNELMODUS = "ph_snelmodus"
+COOKIE_MAX = 60 * 60 * 24 * 30
 
 
 def _controle_json(ph: Ph, controle: Controle) -> dict:
@@ -67,10 +71,16 @@ def maak_app(
     app.state.opslag = opslag or Opslag(instellingen.database)
 
     def dienst() -> PhService:
-        return PhService(app.state.srs, app.state.opslag)
+        return PhService(app.state.srs, app.state.opslag, instellingen)
 
     def medewerker_van(request: Request) -> str:
         return (request.cookies.get(COOKIE_MEDEWERKER) or "").strip()
+
+    def snelmodus_van(request: Request) -> bool:
+        keuze = request.cookies.get(COOKIE_SNELMODUS)
+        if keuze is None:
+            return instellingen.snelmodus
+        return keuze == "1"
 
     def pagina(request: Request, sjabloon: str, **context) -> HTMLResponse:
         return templates.TemplateResponse(
@@ -79,7 +89,9 @@ def maak_app(
             {
                 "instellingen": instellingen,
                 "medewerker": medewerker_van(request),
+                "snelmodus": snelmodus_van(request),
                 "conditie_labels": CONDITIE_LABELS,
+                "toestand_labels": TOESTAND_LABELS,
                 **context,
             },
         )
@@ -89,28 +101,84 @@ def maak_app(
         antwoord.status_code = status
         return antwoord
 
-    # -- overzicht -------------------------------------------------------
+    # -- overzicht en hal ------------------------------------------------
 
     @app.get("/", response_class=HTMLResponse)
-    def index(request: Request):
+    def index(request: Request, melding: str = ""):
+        service = dienst()
         try:
-            regels = dienst().overzicht()
+            regels = service.overzicht()
         except SrsFout as fout:
             return foutpagina(request, f"SRS niet bereikbaar: {fout}", status=502)
         return pagina(
             request,
             "index.html",
             regels=regels,
-            aantal_klaar=sum(1 for r in regels if r.status.mag_uit_ph and not r.is_afgerond),
+            stats=service.statistieken(regels),
+            melding=melding,
+        )
+
+    @app.get("/hal", response_class=HTMLResponse)
+    def hal(request: Request, melding: str = ""):
+        service = dienst()
+        try:
+            wanden, regels = service.hal()
+        except SrsFout as fout:
+            return foutpagina(request, f"SRS niet bereikbaar: {fout}", status=502)
+        return pagina(
+            request,
+            "hal.html",
+            wanden=wanden,
+            stats=service.statistieken(regels),
+            vastlopers=[r for r in regels if r.signaal.vraagt_aandacht],
+            melding=melding,
+        )
+
+    @app.get("/api/hal")
+    def api_hal():
+        """Toestand per vak — voor het automatisch verversen van de plattegrond."""
+        try:
+            wanden, _ = dienst().hal()
+        except SrsFout as fout:
+            return JSONResponse({"fout": str(fout)}, status_code=502)
+        return JSONResponse(
+            {
+                "vakken": {
+                    vak.code: {
+                        "toestand": vak.toestand,
+                        "order": getattr(vak.ph, "order_referentie", ""),
+                        "signaal": getattr(vak.signaal, "niveau", "normaal"),
+                        "leeftijd": getattr(vak.signaal, "leeftijd", ""),
+                    }
+                    for wand in wanden
+                    for vak in wand.vakken
+                }
+            }
         )
 
     @app.post("/medewerker")
     def zet_medewerker(naam: str = Form(""), terug: str = Form("/")):
         antwoord = RedirectResponse(terug or "/", status_code=303)
-        antwoord.set_cookie(
-            COOKIE_MEDEWERKER, naam.strip(), max_age=60 * 60 * 24 * 30, httponly=False
-        )
+        antwoord.set_cookie(COOKIE_MEDEWERKER, naam.strip(), max_age=COOKIE_MAX, httponly=False)
         return antwoord
+
+    @app.post("/snelmodus")
+    def zet_snelmodus(aan: str = Form(""), terug: str = Form("/")):
+        antwoord = RedirectResponse(terug or "/", status_code=303)
+        antwoord.set_cookie(COOKIE_SNELMODUS, "1" if aan == "1" else "0", max_age=COOKIE_MAX)
+        return antwoord
+
+    @app.post("/open")
+    def open_via_scan(request: Request, zoekterm: str = Form(""), terug: str = Form("/")):
+        """Scan een PH-label, orderreferentie of artikel en spring naar het scherm."""
+        try:
+            code = dienst().zoek(zoekterm)
+        except SrsFout as fout:
+            return foutpagina(request, f"SRS niet bereikbaar: {fout}", status=502)
+        if code is None:
+            melding = f"Niets gevonden voor '{zoekterm.strip()}'."
+            return RedirectResponse(f"{terug or '/'}?melding={melding}", status_code=303)
+        return RedirectResponse(f"/ph/{code}", status_code=303)
 
     # -- controlescherm --------------------------------------------------
 
@@ -118,19 +186,32 @@ def maak_app(
     def ph_detail(request: Request, code: str):
         service = dienst()
         try:
-            ph = service.haal_ph(code)
+            ph, status, signaal, onderzoek = service.ph_met_signaal(code)
         except PhNietGevonden:
             return foutpagina(request, f"PH {code} bestaat niet in SRS.", status=404)
         except SrsFout as fout:
             return foutpagina(request, f"SRS niet bereikbaar: {fout}", status=502)
 
         controle = app.state.opslag.laatste_controle(code)
-        status = ph_status(ph)
+        naam = medewerker_van(request)
+
+        # Scheelt een klik: bij een complete PH begint de controle meteen.
+        if (
+            instellingen.auto_start
+            and naam
+            and controle is None
+            and status.mag_uit_ph
+            and onderzoek is None
+        ):
+            controle = service.start_controle(code, naam)
+
         return pagina(
             request,
             "ph.html",
             ph=ph,
             status=status,
+            signaal=signaal,
+            onderzoek=onderzoek,
             controle=controle,
             controle_json=_controle_json(ph, controle) if controle else None,
             gebeurtenissen=app.state.opslag.gebeurtenissen(code, limiet=12),
@@ -145,7 +226,7 @@ def maak_app(
             return foutpagina(request, f"SRS niet bereikbaar: {fout}", status=502)
         antwoord = RedirectResponse(f"/ph/{code}", status_code=303)
         if naam:
-            antwoord.set_cookie(COOKIE_MEDEWERKER, naam, max_age=60 * 60 * 24 * 30)
+            antwoord.set_cookie(COOKIE_MEDEWERKER, naam, max_age=COOKIE_MAX)
         return antwoord
 
     # -- scannen en corrigeren (JSON) ------------------------------------
@@ -196,7 +277,26 @@ def maak_app(
             return JSONResponse({"fout": str(fout)}, status_code=502)
         return JSONResponse({"controle": _controle_json(ph, controle)})
 
-    # -- akkoord en afwijking --------------------------------------------
+    @app.post("/api/ph/{code}/akkoord")
+    def api_akkoord(request: Request, code: str):
+        """Akkoord vanuit het scanscherm — gebruikt door snelmodus en F2."""
+        naam = medewerker_van(request)
+        try:
+            resultaat = dienst().geef_akkoord(code, naam)
+        except ControleFout as fout:
+            return JSONResponse({"fout": str(fout)}, status_code=409)
+        except SrsFout as fout:
+            return JSONResponse({"fout": str(fout)}, status_code=502)
+        return JSONResponse(
+            {
+                "pakbon_url": f"/ph/{code}/pakbon?direct=1",
+                "srs_referentie": resultaat.srs_referentie,
+                "seconden": round(resultaat.doorlooptijd_seconden),
+                "volgende_ph": resultaat.volgende_ph,
+            }
+        )
+
+    # -- akkoord, afwijking en onderzoek ---------------------------------
 
     @app.post("/ph/{code}/akkoord")
     def akkoord(request: Request, code: str, naam: str = Form("")):
@@ -214,7 +314,7 @@ def maak_app(
             )
         antwoord = RedirectResponse(f"/ph/{code}/pakbon?direct=1", status_code=303)
         if naam:
-            antwoord.set_cookie(COOKIE_MEDEWERKER, naam, max_age=60 * 60 * 24 * 30)
+            antwoord.set_cookie(COOKIE_MEDEWERKER, naam, max_age=COOKIE_MAX)
         return antwoord
 
     @app.post("/ph/{code}/afwijking")
@@ -225,12 +325,36 @@ def maak_app(
             return foutpagina(request, str(fout), status=409)
         return RedirectResponse(f"/ph/{code}", status_code=303)
 
+    @app.post("/ph/{code}/onderzoek")
+    def onderzoek_starten(
+        request: Request, code: str, reden: str = Form(""), notitie: str = Form("")
+    ):
+        dienst().start_onderzoek(
+            code,
+            reden=reden or "Handmatig gemeld",
+            notitie=notitie,
+            medewerker=medewerker_van(request),
+        )
+        return RedirectResponse(f"/ph/{code}", status_code=303)
+
+    @app.post("/ph/{code}/onderzoek/afronden")
+    def onderzoek_afronden(request: Request, code: str, oplossing: str = Form("")):
+        try:
+            dienst().rond_onderzoek_af(
+                code, oplossing=oplossing, medewerker=medewerker_van(request)
+            )
+        except ControleFout as fout:
+            return foutpagina(request, str(fout), status=409)
+        return RedirectResponse(f"/ph/{code}", status_code=303)
+
     # -- pakbon ----------------------------------------------------------
 
     @app.get("/ph/{code}/pakbon", response_class=HTMLResponse)
     def pakbon(request: Request, code: str, direct: int = 0):
+        service = dienst()
         try:
-            ph, controle = dienst().pakbon_gegevens(code)
+            ph, controle = service.pakbon_gegevens(code)
+            volgende = service.volgende_klaar(behalve=code)
         except ControleFout as fout:
             return foutpagina(request, str(fout), status=409)
         except SrsFout as fout:
@@ -240,6 +364,7 @@ def maak_app(
             "pakbon.html",
             ph=ph,
             controle=controle,
+            volgende=volgende,
             automatisch_printen=bool(direct),
         )
 

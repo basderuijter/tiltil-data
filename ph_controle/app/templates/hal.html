@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% import "macros.html" as m %}
+{% block titel %}Hal{% endblock %}
+
+{% block inhoud %}
+<span class="label">Pigeonhole-hal</span>
+<h1>Plattegrond</h1>
+<div class="accentlijn"></div>
+
+{{ m.scanbalk("/hal", "scan een PH-label of order om te openen") }}
+{% if melding %}<div class="melding melding-fout">{{ melding }}</div>{% endif %}
+
+<div class="rooster" style="margin-bottom:1.4rem">
+  <div class="kaart kpi"><span class="label">Klaar om te controleren</span><span class="waarde">{{ stats.klaar }}</span></div>
+  <div class="kaart kpi"><span class="label">Wordt gevuld</span><span class="waarde">{{ stats.onderweg }}</span></div>
+  <div class="kaart kpi"><span class="label">Vastlopers</span><span class="waarde" style="color:var(--rood)">{{ stats.vastlopers }}</span></div>
+  <div class="kaart kpi"><span class="label">Let op</span><span class="waarde" style="color:var(--terra)">{{ stats.let_op }}</span></div>
+</div>
+
+<div class="legenda niet-printen">
+  {% for toestand in ['beschikbaar', 'vullend', 'klaar', 'in_controle', 'let_op', 'vastloper', 'afgemeld'] %}
+    <span class="legenda-item"><span class="vak-kleur vak-{{ toestand }}"></span>{{ toestand_labels[toestand] }}</span>
+  {% endfor %}
+  <span class="mini" id="ververst"></span>
+</div>
+
+{% for wand in wanden %}
+  <h2 style="margin-top:1.4rem">{{ wand.naam }} <span class="mini">· {{ wand.aantal }} vakken</span></h2>
+  <div class="vakkenraster" style="--kolommen: {{ wand.kolommen }}">
+    {% for vak in wand.vakken %}
+      {% if vak.ph %}
+        <a class="vak vak-{{ vak.toestand }}" href="/ph/{{ vak.code }}" data-vak="{{ vak.code }}"
+           title="{{ vak.code }} · {{ vak.ph.order_referentie }} · {{ toestand_labels[vak.toestand] }}{% if vak.signaal and vak.signaal.redenen %} — {{ vak.signaal.redenen | join(' ') }}{% endif %}">
+          <span class="vak-nummer">{{ vak.nummer }}</span>
+          <span class="vak-order">{{ vak.ph.order_referentie }}</span>
+          <span class="vak-detail">{{ vak.status.aantal_in_ph }}/{{ vak.status.aantal_besteld }}{% if vak.signaal and vak.signaal.leeftijd_uren >= 1 %} · {{ vak.signaal.leeftijd }}{% endif %}</span>
+        </a>
+      {% else %}
+        <span class="vak vak-beschikbaar" data-vak="{{ vak.code }}" title="{{ vak.code }} · leeg">
+          <span class="vak-nummer">{{ vak.nummer }}</span>
+          <span class="vak-order mini">vrij</span>
+        </span>
+      {% endif %}
+    {% endfor %}
+  </div>
+{% endfor %}
+
+{% if vastlopers %}
+<hr class="scheiding">
+<h2>Vraagt aandacht</h2>
+<table>
+  <thead><tr><th>PH</th><th>Order</th><th>Signaal</th><th>Waarom</th><th class="nowrap">Ligt er</th><th></th></tr></thead>
+  <tbody>
+    {% for r in vastlopers %}
+    <tr>
+      <td class="nowrap"><strong>{{ r.ph.code }}</strong></td>
+      <td class="nowrap">{{ r.ph.order_referentie }}</td>
+      <td>{{ m.signaalpil(r.signaal) }}</td>
+      <td class="stil">{{ r.signaal.redenen | join(' ') }}</td>
+      <td class="nowrap">{{ r.signaal.leeftijd }}</td>
+      <td class="rechts"><a class="knop knop-stil" href="/ph/{{ r.ph.code }}">Bekijken</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/hal.js"></script>
+{% endblock %}
