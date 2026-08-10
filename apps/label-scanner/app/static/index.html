@@ -10,8 +10,16 @@
     <header class="topbar">
       <span class="logo">TILTIL</span>
       <span id="badge-demo" class="badge badge--demo hidden">DEMO</span>
+      <button id="btn-station" class="badge badge--station hidden" type="button"></button>
       <button id="btn-home" class="topbar__button hidden" type="button">Opnieuw</button>
     </header>
+
+    <!-- Step 0 — which table is this? Asked once, then remembered. -->
+    <section id="screen-station" class="screen hidden">
+      <h1>Welke tafel is dit?</h1>
+      <p class="hint">Deze keuze wordt onthouden op dit scherm.</p>
+      <div id="station-buttons" class="grid grid--methods"></div>
+    </section>
 
     <!-- Step 1 — scan -->
     <section id="screen-scan" class="screen">

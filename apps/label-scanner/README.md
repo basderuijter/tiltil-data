@@ -100,6 +100,18 @@ file in `SHIPPING_OPTIONS_FILE` when that lookup is unavailable. See
 `shipping-options.example.json`. That file is also the natural source for a
 printed barcode command sheet, since the barcode can hold the code verbatim.
 
+## More than one packing table
+
+With sixteen tables you run **one** app centrally and give each table a small
+machine that drives its own USB label printer over CUPS. Describe the tables in
+`STATIONS_FILE` (see `stations.example.json`); the app then asks each screen
+once which table it is and remembers the answer, so a label always comes out at
+the table that scanned it. The chosen table is shown in the top bar and can be
+changed by tapping it.
+
+Leave `STATIONS_FILE` unset for a single table — the app then prints to the
+printer in `.env` as before.
+
 ## Multicollo
 
 Sendcloud requires each box of a multicollo shipment to declare which items it

@@ -71,3 +71,36 @@ def test_live_mode_without_keys_fails_loudly(tmp_path):
 
     assert response.status_code == 503
     assert "sleutels" in response.json()["detail"]
+
+
+def test_stations_are_listed_when_configured(tmp_path):
+    stations = tmp_path / "stations.json"
+    stations.write_text(
+        '[{"id": "tafel-01", "name": "Tafel 1", "cups_host": "t1.local",'
+        ' "cups_printer": "zd220"}]'
+    )
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        demo_mode=True, print_backend="none", spool_dir=tmp_path, stations_file=stations
+    )
+    with TestClient(app) as test_client:
+        listed = test_client.get("/api/stations").json()
+        # Without a station the app cannot know which printer to use, so the
+        # label is still made but the print is reported as failed.
+        result = test_client.post(
+            "/api/labels",
+            json={
+                "order_number": "1042",
+                "shipping_option_code": "postnl:standard",
+                "quantity": 1,
+            },
+        ).json()
+    app.dependency_overrides.clear()
+
+    assert [s["id"] for s in listed] == ["tafel-01"]
+    assert len(result["labels"]) == 1
+    assert result["printed"] is False
+    assert "tafel" in result["print_error"].lower()
+
+
+def test_single_table_setup_needs_no_station(client):
+    assert client.get("/api/stations").json() == []

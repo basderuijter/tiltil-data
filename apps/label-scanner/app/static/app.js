@@ -7,7 +7,11 @@
 
 const $ = (id) => document.getElementById(id);
 
+const STATION_KEY = "label-scanner.station";
+
 const state = {
+  station: null,
+  stations: [],
   order: null,
   options: [],
   quantity: 1,
@@ -20,10 +24,10 @@ let toastTimer = null;
 // --- helpers ---------------------------------------------------------------
 
 function showScreen(name) {
-  for (const screen of ["scan", "order", "result"]) {
+  for (const screen of ["station", "scan", "order", "result"]) {
     $(`screen-${screen}`).classList.toggle("hidden", screen !== name);
   }
-  $("btn-home").classList.toggle("hidden", name === "scan");
+  $("btn-home").classList.toggle("hidden", name === "scan" || name === "station");
   if (name === "scan") {
     $("input-order").value = "";
     $("input-order").focus();
@@ -74,6 +78,58 @@ $("form-scan").addEventListener("submit", async (event) => {
 // Keep the scanner pointed at the input even if someone taps elsewhere.
 document.addEventListener("click", () => {
   if (!$("screen-scan").classList.contains("hidden")) $("input-order").focus();
+});
+
+// --- step 0: which table is this? ------------------------------------------
+
+async function initStations() {
+  try {
+    state.stations = await api("/api/stations");
+  } catch {
+    // A single-table setup has no station list; the server then falls back to
+    // the printer in its own configuration.
+    state.stations = [];
+  }
+  if (!state.stations.length) return showScreen("scan");
+
+  const saved = localStorage.getItem(STATION_KEY);
+  const known = state.stations.find((s) => s.id === saved);
+  if (known) {
+    selectStation(known);
+    return showScreen("scan");
+  }
+  renderStations();
+  showScreen("station");
+}
+
+function renderStations() {
+  const container = $("station-buttons");
+  container.innerHTML = "";
+  for (const station of state.stations) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "tile";
+    button.textContent = station.name;
+    button.addEventListener("click", () => {
+      selectStation(station);
+      showScreen("scan");
+    });
+    container.appendChild(button);
+  }
+}
+
+function selectStation(station) {
+  state.station = station;
+  localStorage.setItem(STATION_KEY, station.id);
+  const badge = $("btn-station");
+  badge.textContent = station.name;
+  badge.classList.remove("hidden");
+}
+
+// Changing the table is deliberate but rare, so it lives behind the badge.
+$("btn-station").addEventListener("click", () => {
+  renderStations();
+  showScreen("station");
 });
 
 // --- step 2: confirm -------------------------------------------------------
@@ -177,6 +233,7 @@ $("btn-create").addEventListener("click", async () => {
         order_number: state.order.order_number,
         shipping_option_code: state.optionCode,
         quantity: state.quantity,
+        station: state.station?.id ?? null,
       }),
     });
     renderResult(result);
@@ -216,7 +273,10 @@ $("btn-reprint").addEventListener("click", async () => {
   try {
     await api("/api/reprint", {
       method: "POST",
-      body: JSON.stringify(state.lastResult),
+      body: JSON.stringify({
+        result: state.lastResult,
+        station: state.station?.id ?? null,
+      }),
     });
     renderResult({ ...state.lastResult, printed: true, print_error: "" });
   } catch (error) {
@@ -233,4 +293,4 @@ function escapeHtml(value) {
   return div.innerHTML;
 }
 
-showScreen("scan");
+initStations();

@@ -1,0 +1,5 @@
+[
+  { "id": "tafel-01", "name": "Tafel 1", "cups_host": "tafel-01.local", "cups_printer": "zd220" },
+  { "id": "tafel-02", "name": "Tafel 2", "cups_host": "tafel-02.local", "cups_printer": "zd220" },
+  { "id": "tafel-03", "name": "Tafel 3", "cups_host": "tafel-03.local", "cups_printer": "zd220" }
+]

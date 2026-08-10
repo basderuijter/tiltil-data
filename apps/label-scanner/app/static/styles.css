@@ -72,6 +72,13 @@ body {
   color: #000;
 }
 
+.badge--station {
+  border: 0;
+  background: var(--surface-active);
+  color: var(--muted);
+  font-weight: 600;
+}
+
 .screen {
   padding: 16px 22px 20px;
 }

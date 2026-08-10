@@ -26,6 +26,7 @@ from .config import Settings, get_settings
 from .models import LabelResult, Order, ShippingOption
 from .printing import PrintError, Printer
 from .sendcloud import OrderNotFound, SendcloudClient, SendcloudError
+from .stations import Station, StationError, load_stations, resolve_station
 
 logger = logging.getLogger("label_scanner")
 
@@ -61,6 +62,13 @@ class LabelRequest(BaseModel):
     order_number: str
     shipping_option_code: str
     quantity: int = Field(ge=1, le=20)
+    # Which packing table asked. Only needed in a multi-table setup.
+    station: str | None = None
+
+
+class ReprintRequest(BaseModel):
+    result: LabelResult
+    station: str | None = None
 
 
 @app.get("/api/orders/{order_number}", response_model=OrderResponse)
@@ -127,9 +135,9 @@ async def create_labels(
     # must not read as "label mislukt", so report it separately and let the
     # packer reprint from the result screen.
     try:
-        await printer.print_labels(labels)
+        await printer.print_labels(labels, _station(settings, request.station))
         result.printed = True
-    except PrintError as exc:
+    except (PrintError, StationError) as exc:
         logger.warning("Printen mislukt voor order %s: %s", result.order_number, exc)
         result.print_error = str(exc)
 
@@ -138,13 +146,30 @@ async def create_labels(
 
 @app.post("/api/reprint")
 async def reprint(
-    result: LabelResult, printer: Printer = Depends(get_printer)
+    request: ReprintRequest,
+    settings: Settings = Depends(get_settings),
+    printer: Printer = Depends(get_printer),
 ) -> dict[str, bool]:
     try:
-        await printer.print_labels(result.labels)
-    except PrintError as exc:
+        await printer.print_labels(
+            request.result.labels, _station(settings, request.station)
+        )
+    except (PrintError, StationError) as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return {"printed": True}
+
+
+@app.get("/api/stations", response_model=list[Station])
+async def list_stations(settings: Settings = Depends(get_settings)) -> list[Station]:
+    """The packing tables. Empty when this runs as a single station."""
+    try:
+        return load_stations(settings)
+    except StationError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+def _station(settings: Settings, station_id: str | None) -> Station | None:
+    return resolve_station(settings, station_id)
 
 
 @app.get("/api/contracts")

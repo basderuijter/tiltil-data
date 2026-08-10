@@ -60,6 +60,10 @@ class Settings(BaseSettings):
     print_client_printer_id: str = ""
     # Used when print_backend == "cups".
     cups_printer: str = ""
+    # Multi-table setups: JSON file describing each packing table and the CUPS
+    # host driving its label printer. See stations.example.json. Leave unset
+    # when a single table is served.
+    stations_file: Path | None = None
     spool_dir: Path = Path("/var/tmp/label-scanner")
 
     # --- Behaviour -------------------------------------------------------------

@@ -24,6 +24,7 @@ import httpx
 from .config import Settings
 from .models import Label
 from .sendcloud import decode_label
+from .stations import Station
 
 _EXTENSIONS = {
     "application/pdf": ".pdf",
@@ -44,10 +45,12 @@ class Printer:
         self._settings = settings
         self._client = client
 
-    async def print_labels(self, labels: list[Label]) -> None:
+    async def print_labels(
+        self, labels: list[Label], station: Station | None = None
+    ) -> None:
         for label in labels:
             path = self._spool(label)
-            await self._send(path)
+            await self._send(path, station)
 
     def _spool(self, label: Label) -> Path:
         directory = self._settings.spool_dir
@@ -58,12 +61,14 @@ class Printer:
         path.write_bytes(decode_label(label))
         return path
 
-    async def _send(self, path: Path) -> None:
+    async def _send(self, path: Path, station: Station | None) -> None:
         backend = self._settings.print_backend
         if backend == "none":
             return
-        if backend == "cups":
-            await self._print_via_cups(path)
+        # A table always prints through its own CUPS host, whatever the default
+        # backend is — that is the whole point of configuring stations.
+        if station or backend == "cups":
+            await self._print_via_cups(path, station)
             return
         await self._print_via_sendcloud_client(path)
 
@@ -97,16 +102,22 @@ class Printer:
                 f"Print Client weigerde de opdracht (status {response.status_code})."
             )
 
-    async def _print_via_cups(self, path: Path) -> None:
-        printer = self._settings.cups_printer
+    async def _print_via_cups(self, path: Path, station: Station | None = None) -> None:
+        printer = station.cups_printer if station else self._settings.cups_printer
         if not printer:
             raise PrintError("Geen CUPS_PRINTER ingesteld in .env.")
-        command = ["lp", "-d", printer, str(path)]
+        command = ["lp"]
+        if station:
+            command += ["-h", station.cups_host]
+        command += ["-d", printer, str(path)]
         result = await asyncio.to_thread(
             subprocess.run, command, capture_output=True, text=True
         )
         if result.returncode != 0:
-            raise PrintError(f"lp gaf een fout: {result.stderr.strip() or result.returncode}")
+            where = f" op {station.name}" if station else ""
+            raise PrintError(
+                f"Printen{where} mislukt: {result.stderr.strip() or result.returncode}"
+            )
 
     # -- discovery ------------------------------------------------------------
 
