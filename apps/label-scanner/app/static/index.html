@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>TILTIL — labels</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <span class="logo">TILTIL</span>
+      <span id="badge-demo" class="badge badge--demo hidden">DEMO</span>
+      <button id="btn-home" class="topbar__button hidden" type="button">Opnieuw</button>
+    </header>
+
+    <!-- Step 1 — scan -->
+    <section id="screen-scan" class="screen">
+      <h1>Scan het ordernummer</h1>
+      <p class="hint">Richt de scanner op de barcode van de pakbon.</p>
+      <form id="form-scan" autocomplete="off">
+        <input
+          id="input-order"
+          class="scan-input"
+          name="order"
+          inputmode="text"
+          placeholder="Ordernummer"
+          autofocus
+        />
+        <button class="button button--primary" type="submit">Zoek order</button>
+      </form>
+    </section>
+
+    <!-- Step 2 — confirm -->
+    <section id="screen-order" class="screen hidden">
+      <div class="order-head">
+        <div>
+          <span class="label">Order</span>
+          <h1 id="order-number"></h1>
+        </div>
+        <address id="order-address"></address>
+      </div>
+
+      <div id="warn-announced" class="warning hidden">
+        Let op: deze order heeft al een label in Sendcloud.
+      </div>
+
+      <h2>Aantal pakketten</h2>
+      <div id="quantity-buttons" class="grid grid--quantity"></div>
+
+      <h2>
+        Verzendmethode
+        <span id="current-method" class="current-method"></span>
+      </h2>
+      <div id="method-buttons" class="grid grid--methods"></div>
+
+      <button id="btn-create" class="button button--primary button--wide" type="button">
+        Label maken &amp; printen
+      </button>
+    </section>
+
+    <!-- Step 3 — result -->
+    <section id="screen-result" class="screen hidden">
+      <div id="result-icon" class="result-icon">✓</div>
+      <h1 id="result-title"></h1>
+      <p id="result-detail" class="result-detail"></p>
+      <ul id="result-tracking" class="tracking"></ul>
+      <div class="row">
+        <button id="btn-reprint" class="button hidden" type="button">Opnieuw printen</button>
+        <button id="btn-next" class="button button--primary" type="button">Volgende order</button>
+      </div>
+    </section>
+
+    <div id="overlay" class="overlay hidden"><div class="spinner"></div></div>
+    <div id="toast" class="toast hidden"></div>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
