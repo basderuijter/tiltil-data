@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <title>{% block titel %}PH-controle{% endblock %} · TILTIL</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header class="balk niet-printen">
+  <div class="wrap">
+    <a href="/" style="text-decoration:none;color:inherit" class="merk">Things I Like Things I Love<span> · PH-controle</span></a>
+    <nav>
+      <form method="post" action="/medewerker" style="display:flex;gap:.5rem;align-items:center">
+        <label class="label" for="naamveld">Medewerker</label>
+        <input type="text" id="naamveld" name="naam" value="{{ medewerker }}" placeholder="je naam" autocomplete="off">
+        <input type="hidden" name="terug" value="{{ request.url.path }}">
+        <button class="knop knop-stil" type="submit">Opslaan</button>
+      </form>
+    </nav>
+  </div>
+</header>
+<main class="wrap">
+{% block inhoud %}{% endblock %}
+</main>
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,9 @@
+{% macro statuspil(status) -%}
+<span class="pil pil-{{ status.status }}">{{ status.label }}</span>
+{%- endmacro %}
+
+{% macro voortgangspil(regel) -%}
+  {% if regel.is_afgerond %}<span class="pil pil-afgerond">Afgemeld</span>
+  {% elif regel.in_controle %}<span class="pil pil-bezig">In controle</span>
+  {% else %}<span class="mini">—</span>{% endif %}
+{%- endmacro %}

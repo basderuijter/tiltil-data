@@ -3,3 +3,11 @@
 target/
 dbt_packages/
 logs/
+
+# app
+.venv/
+__pycache__/
+*.pyc
+ph_controle/data/
+.env
+.pytest_cache/

@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block titel %}Pakbon {{ ph.order_referentie }}{% endblock %}
+
+{% block inhoud %}
+<div class="niet-printen" style="display:flex;gap:.6rem;margin-bottom:1rem">
+  <button class="knop knop-accent" onclick="window.print()">Printen</button>
+  <a class="knop knop-stil" href="/">Terug naar overzicht</a>
+</div>
+
+<article class="pakbon">
+  <div class="kop-rij">
+    <div>
+      <span class="label">Pakbon</span>
+      <h1>{{ ph.order_referentie }}</h1>
+      <div class="accentlijn"></div>
+      <div class="stil">Orderdatum {{ ph.orderdatum or '—' }} · PH {{ ph.code }}</div>
+    </div>
+    <div class="adresblok rechts">
+      <strong>{{ instellingen.bedrijfsnaam }}</strong><br>
+      {% if instellingen.bedrijfsadres %}{{ instellingen.bedrijfsadres }}<br>{% endif %}
+      {% if instellingen.bedrijfsplaats %}{{ instellingen.bedrijfsplaats }}<br>{% endif %}
+      {{ instellingen.bedrijfsemail }}<br>
+      {{ instellingen.bedrijfssite }}
+    </div>
+  </div>
+
+  <div class="rooster" style="margin:1.6rem 0">
+    <div>
+      <span class="label">Verzendadres</span>
+      <div class="adresblok">
+        {{ ph.klant }}<br>
+        {{ ph.adres }}<br>
+        {{ ph.postcode_plaats }}<br>
+        {{ ph.land }}
+      </div>
+    </div>
+    <div>
+      <span class="label">Verzending</span>
+      <div class="adresblok">{{ ph.verzendmethode or '—' }}</div>
+    </div>
+    <div>
+      <span class="label">Gecontroleerd</span>
+      <div class="adresblok">
+        {{ controle.akkoord_door }}<br>
+        {{ controle.akkoord_op.strftime('%d-%m-%Y %H:%M') }}
+      </div>
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Artikel</th>
+        <th>Barcode</th>
+        <th class="rechts">Aantal</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for regel in controle.regels %}
+      <tr>
+        <td>{{ regel.omschrijving }}{% if regel.sku %}<div class="mini">{{ regel.sku }}</div>{% endif %}</td>
+        <td class="mini">{{ regel.barcode }}</td>
+        <td class="rechts">{{ regel.aantal_geteld }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="2" class="rechts"><strong>Totaal aantal stuks</strong></td>
+        <td class="rechts"><strong>{{ controle.totaal_geteld }}</strong></td>
+      </tr>
+    </tfoot>
+  </table>
+
+  {% if ph.opmerking %}
+    <p class="stil" style="margin-top:1.2rem"><strong>Opmerking:</strong> {{ ph.opmerking }}</p>
+  {% endif %}
+
+  <p class="stil" style="margin-top:1.6rem">Bedankt voor je bestelling. Klopt er iets niet? Mail ons op {{ instellingen.bedrijfsemail }} en we lossen het op.</p>
+
+  <div class="voet">
+    <span>{{ instellingen.bedrijfsnaam }}{% if instellingen.btw_nummer %} · BTW {{ instellingen.btw_nummer }}{% endif %}</span>
+    <span>Pakbon {{ ph.order_referentie }}</span>
+  </div>
+</article>
+{% endblock %}
+
+{% block scripts %}
+{% if automatisch_printen %}
+<script>window.addEventListener("load", function () { window.print(); });</script>
+{% endif %}
+{% endblock %}

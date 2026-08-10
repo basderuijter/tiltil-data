@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% import "macros.html" as m %}
+{% block titel %}PH {{ ph.code }}{% endblock %}
+
+{% block inhoud %}
+<span class="label">PH-controle</span>
+<h1>{{ ph.code }} · {{ ph.order_referentie }}</h1>
+<div class="accentlijn"></div>
+
+<div class="kaart">
+  <div class="rooster">
+    <div>
+      <span class="label">Klant</span>
+      <div>{{ ph.klant or '—' }}</div>
+      <div class="stil">{{ ph.adres }}<br>{{ ph.postcode_plaats }} {{ ph.land }}</div>
+    </div>
+    <div>
+      <span class="label">Order</span>
+      <div>{{ ph.order_referentie }}</div>
+      <div class="stil">{{ ph.orderdatum }} · {{ ph.verzendmethode or 'verzendmethode onbekend' }}</div>
+    </div>
+    <div>
+      <span class="label">Status in SRS</span>
+      <div style="margin-top:.25rem">{{ m.statuspil(status) }}</div>
+      <div class="stil">{{ status.aantal_in_ph }} van {{ status.aantal_besteld }} stuks in de PH</div>
+    </div>
+  </div>
+  {% if ph.opmerking %}
+    <div class="melding melding-info" style="margin-bottom:0">Opmerking bij de order: {{ ph.opmerking }}</div>
+  {% endif %}
+</div>
+
+{% if not status.mag_uit_ph %}
+  <div class="melding melding-let-op">
+    <strong>Deze PH is nog niet compleet.</strong>
+    {% if status.status == 'teveel' %}
+      Er ligt meer in de PH dan besteld — controleer eerst wat er te veel ligt.
+    {% else %}
+      Er {{ 'ontbreekt' if status.aantal_ontbrekend == 1 else 'ontbreken' }} nog {{ status.aantal_ontbrekend }} stuk(s). De producten mogen er nog niet uit.
+    {% endif %}
+    <ul class="lijstje">
+      {% for r in status.ontbrekend %}
+        <li>{{ r.omschrijving }} ({{ r.barcode }}) — {{ r.aantal_in_ph }}/{{ r.aantal_besteld }}{% if r.picklocatie %}, picklocatie {{ r.picklocatie }}{% endif %}</li>
+      {% endfor %}
+      {% for r in status.overtollig %}
+        <li>{{ r.omschrijving }} ({{ r.barcode }}) — {{ r.teveel }} te veel in de PH</li>
+      {% endfor %}
+    </ul>
+  </div>
+{% else %}
+  <div class="melding melding-ok"><strong>Compleet volgens SRS.</strong> Controleer de order en de staat van de producten, geef daarna akkoord.</div>
+{% endif %}
+
+{% if controle and controle.is_akkoord %}
+  <div class="kaart">
+    <h2>Akkoord gegeven</h2>
+    <p class="stil">Door {{ controle.akkoord_door }} op {{ controle.akkoord_op.strftime('%d-%m-%Y %H:%M') }}. De producten mogen uit de PH.</p>
+    <a class="knop knop-accent" href="/ph/{{ ph.code }}/pakbon?direct=1">Pakbon printen</a>
+    <a class="knop knop-stil" href="/">Terug naar overzicht</a>
+  </div>
+
+{% elif not controle %}
+  <div class="kaart">
+    <h2>Controle starten</h2>
+    <p class="stil">Scan straks elk product; de app telt mee en let op afwijkingen.</p>
+    <form method="post" action="/ph/{{ ph.code }}/start" class="scanrij">
+      <div>
+        <span class="label">Medewerker</span><br>
+        <input type="text" name="naam" value="{{ medewerker }}" placeholder="je naam" autocomplete="off" required>
+      </div>
+      <button class="knop knop-accent" type="submit">Controle starten</button>
+    </form>
+  </div>
+
+{% else %}
+  <div class="kaart niet-printen">
+    <h2>Scannen</h2>
+    <form id="scanformulier" class="scanrij" autocomplete="off">
+      <div style="flex:1">
+        <span class="label">Barcode</span><br>
+        <input type="text" id="scanveld" name="barcode" autofocus autocomplete="off"
+               placeholder="scan of typ de barcode">
+      </div>
+      <button class="knop" type="submit">Tel mee</button>
+    </form>
+    <div id="scanmelding" class="melding melding-info">Scan de producten één voor één.</div>
+  </div>
+
+  <table id="regeltabel">
+    <thead>
+      <tr>
+        <th>Artikel</th>
+        <th>Barcode</th>
+        <th class="rechts">Geteld</th>
+        <th style="width:110px"></th>
+        <th style="width:170px">Staat</th>
+        <th>Notitie</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <hr class="scheiding">
+
+  <div class="kaart" id="akkoordblok">
+    <h2>Akkoord en pakbon</h2>
+    <div id="akkoordredenen"></div>
+    <form method="post" action="/ph/{{ ph.code }}/akkoord" class="scanrij" style="margin-top:.8rem">
+      <div>
+        <span class="label">Akkoord door</span><br>
+        <input type="text" name="naam" value="{{ medewerker or controle.medewerker }}" placeholder="je naam" autocomplete="off" required>
+      </div>
+      <button class="knop knop-akkoord" id="akkoordknop" type="submit" disabled>Akkoord · pakbon printen</button>
+    </form>
+    <p class="mini">Bij akkoord meldt de app de PH af in SRS en opent de pakbon in het printvenster.</p>
+  </div>
+
+  <div class="kaart niet-printen">
+    <h2>Afwijking melden</h2>
+    <p class="stil">Klopt er iets niet (beschadigd, verkeerd artikel, ontbrekend)? Leg het vast; de PH blijft dan openstaan.</p>
+    <form method="post" action="/ph/{{ ph.code }}/afwijking" class="scanrij">
+      <div style="flex:1">
+        <input type="text" name="notitie" style="width:100%" value="{{ controle.afwijking_notitie }}"
+               placeholder="wat is er aan de hand?">
+      </div>
+      <button class="knop knop-stil" type="submit">Vastleggen</button>
+    </form>
+  </div>
+{% endif %}
+
+{% if gebeurtenissen %}
+<hr class="scheiding">
+<h2>Logboek</h2>
+<table>
+  <thead><tr><th>Moment</th><th>Gebeurtenis</th><th>Medewerker</th><th>Details</th></tr></thead>
+  <tbody>
+    {% for g in gebeurtenissen %}
+      <tr>
+        <td class="mini">{{ g.moment.replace('T', ' ') }}</td>
+        <td>{{ g.soort.replace('_', ' ') }}</td>
+        <td>{{ g.medewerker or '—' }}</td>
+        <td class="mini">{{ g.details | tojson }}</td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if controle and not controle.is_akkoord %}
+<script id="controle-data" type="application/json">{{ controle_json | tojson }}</script>
+<script>window.PH_CODE = {{ ph.code | tojson }};</script>
+<script src="/static/app.js"></script>
+{% endif %}
+{% endblock %}
