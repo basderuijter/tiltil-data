@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     sendcloud_integration_id: int = 0
     sendcloud_api_base: str = "https://panel.sendcloud.sc/api"
     sendcloud_timeout_seconds: float = 30.0
+    # A scanned order is often created seconds earlier by the PH app, and
+    # Sendcloud saves orders asynchronously. Keep asking for this long before
+    # reporting "not found". Set to 0 to fail on the first miss.
+    lookup_retry_seconds: float = Field(default=6.0, ge=0, le=60)
 
     # --- Label format ----------------------------------------------------------
     # application/pdf for a normal or A6 label printer, application/zpl for a

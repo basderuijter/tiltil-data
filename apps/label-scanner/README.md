@@ -115,9 +115,19 @@ printer in `.env` as before.
 ## Partial deliveries and what the customer sees
 
 This app deliberately knows nothing about which items belong to which delivery.
-It labels whatever the scanned Sendcloud order contains, so a partial delivery
-works by giving it its own order (`1042-1`, `1042-2`) created by the system that
-knows what is in the box. One scan then equals one delivery.
+The division of labour is:
+
+    Shopify        the customer's order
+    PH-controle    creates the delivery in Sendcloud (which items, which box)
+    this app       makes and prints the label(s) for that delivery
+
+So a partial delivery gets its own Sendcloud order (`1042-1`, `1042-2`) with
+only the counted lines, and one scan equals one delivery.
+
+Because that order is created seconds before the packing slip reaches the
+table, and Sendcloud saves orders asynchronously, a lookup keeps retrying for
+`LOOKUP_RETRY_SECONDS` before reporting "not found". Without that, the first
+scan of a fresh delivery would fail for reasons the packer cannot see.
 
 What it does do is hand the result back: set `CALLBACK_URL` and every finished
 label is POSTed as

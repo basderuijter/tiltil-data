@@ -41,6 +41,9 @@ SHIPPING_OPTIONS = "/v3/shipping-options"
 # Fallback lookup: the long-standing v2 parcels endpoint.
 PARCELS_SEARCH_V2 = "/v2/parcels"
 
+# How often to re-ask while waiting for a freshly created order to appear.
+LOOKUP_RETRY_INTERVAL = 1.0
+
 
 class SendcloudError(Exception):
     """Raised for any Sendcloud failure the operator should see."""
@@ -95,17 +98,29 @@ class SendcloudClient:
     # -- orders ---------------------------------------------------------------
 
     async def find_order(self, order_number: str) -> Order:
-        """Look up a scanned order number, trying v3 first and then v2."""
+        """Look up a scanned order number, trying v3 first and then v2.
+
+        Sendcloud saves orders asynchronously: a 201 from the Orders API does
+        not mean the order can be shipped yet. The delivery is created moments
+        before the packing slip reaches the packing table, so a first miss is
+        expected rather than exceptional — keep asking briefly before giving up.
+        """
         order_number = order_number.strip()
         if not order_number:
             raise OrderNotFound("Geen ordernummer gescand.")
 
-        order = await self._find_order_v3(order_number)
-        if order is None:
-            order = await self._find_order_v2(order_number)
-        if order is None:
-            raise OrderNotFound(f"Order {order_number} niet gevonden in Sendcloud.")
-        return order
+        deadline = self._settings.lookup_retry_seconds
+        waited = 0.0
+        while True:
+            order = await self._find_order_v3(order_number)
+            if order is None:
+                order = await self._find_order_v2(order_number)
+            if order is not None:
+                return order
+            if waited >= deadline:
+                raise OrderNotFound(f"Order {order_number} niet gevonden in Sendcloud.")
+            await asyncio.sleep(LOOKUP_RETRY_INTERVAL)
+            waited += LOOKUP_RETRY_INTERVAL
 
     async def _find_order_v3(self, order_number: str) -> Order | None:
         params: dict[str, Any] = {"order_number": order_number}

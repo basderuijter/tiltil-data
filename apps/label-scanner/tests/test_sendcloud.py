@@ -408,3 +408,38 @@ def test_split_items_refuses_more_boxes_than_items():
 def test_split_items_explains_when_the_order_has_no_item_lines():
     with pytest.raises(SendcloudError, match="geen artikelregels"):
         split_items([], 2)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_lookup_waits_for_an_order_that_is_still_being_saved():
+    # Sendcloud saves orders asynchronously, so the delivery the PH app just
+    # created may not be visible on the packer's first scan.
+    respx.get(f"{BASE}/v3/orders").mock(
+        side_effect=[
+            httpx.Response(200, json={"data": []}),
+            httpx.Response(200, json={"data": []}),
+            httpx.Response(200, json={"data": [V3_ORDER]}),
+        ]
+    )
+    respx.get(f"{BASE}/v2/parcels").mock(
+        return_value=httpx.Response(200, json={"parcels": []})
+    )
+    client = await make_client(lookup_retry_seconds=3)
+
+    order = await client.find_order("1042")
+
+    assert order.id == "669"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_lookup_still_gives_up_eventually():
+    respx.get(f"{BASE}/v3/orders").mock(return_value=httpx.Response(200, json={"data": []}))
+    respx.get(f"{BASE}/v2/parcels").mock(
+        return_value=httpx.Response(200, json={"parcels": []})
+    )
+    client = await make_client(lookup_retry_seconds=0)
+
+    with pytest.raises(OrderNotFound):
+        await client.find_order("1042")
