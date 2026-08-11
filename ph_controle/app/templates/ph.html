@@ -80,8 +80,26 @@
 
 {% if controle and controle.is_akkoord %}
   <div class="kaart">
-    <h2>Akkoord gegeven</h2>
-    <p class="stil">Door {{ controle.akkoord_door }} op {{ controle.akkoord_op.strftime('%d-%m-%Y %H:%M') }}. De producten mogen uit de PH.</p>
+    <h2>{{ 'Deellevering' if controle.is_deellevering else 'Levering' }} {{ controle.referentie }} akkoord</h2>
+    <p class="stil">
+      Door {{ controle.akkoord_door }} op {{ controle.akkoord_op.strftime('%d-%m-%Y %H:%M') }} ·
+      {{ controle.kratten }} krat(ten), {{ controle.totaal_geteld }} stuks. De producten mogen uit de PH.
+    </p>
+    {% if controle.label_fout %}
+      <div class="melding melding-fout">
+        Label niet gelukt: {{ controle.label_fout }}
+        <form method="post" action="/ph/{{ ph.code }}/label/alsnog" style="margin-top:.6rem">
+          <button class="knop" type="submit">Label alsnog maken</button>
+        </form>
+      </div>
+    {% elif controle.tracking %}
+      <div class="melding melding-ok">
+        {{ controle.tracking | length }} label(s) · {{ controle.zending_methode }} · {{ controle.tracking | join(', ') }}
+        <form method="post" action="/ph/{{ ph.code }}/label/opnieuw" style="margin-top:.6rem">
+          <button class="knop knop-stil" type="submit">Label opnieuw printen</button>
+        </form>
+      </div>
+    {% endif %}
     <a class="knop knop-accent" href="/ph/{{ ph.code }}/pakbon?direct=1">Pakbon printen</a>
     <a class="knop knop-stil" href="/hal">Terug naar de hal</a>
   </div>
@@ -89,14 +107,20 @@
 {% elif not controle %}
   <div class="kaart">
     <h2>Controle starten</h2>
-    <p class="stil">Scan straks elk product; de app telt mee en let op afwijkingen.</p>
+    <p class="stil">Scan straks elk product; de app telt mee en let op afwijkingen. Leg de artikelen in kratten — één krat is één doos en dus één label.</p>
     <form method="post" action="/ph/{{ ph.code }}/start" class="scanrij">
       <div>
         <span class="label">Medewerker</span><br>
         <input type="text" name="naam" value="{{ medewerker }}" placeholder="je naam" autocomplete="off" required>
       </div>
-      <button class="knop knop-accent" type="submit">Controle starten</button>
+      <input type="hidden" name="deellevering" value="{{ '1' if status.mag_deellevering else '0' }}">
+      <button class="knop knop-accent" type="submit">
+        {{ 'Deellevering vrijgeven' if status.mag_deellevering else 'Controle starten' }}
+      </button>
     </form>
+    {% if status.mag_deellevering %}
+      <p class="mini">Wat er nu ligt gaat als deellevering de deur uit met een eigen referentie; de rest volgt later in een aparte zending.</p>
+    {% endif %}
   </div>
 
 {% else %}
@@ -111,9 +135,19 @@
       </form>
     </div>
     <p class="mini" style="margin:.3rem 0 .8rem">
-      {% if snelmodus %}Laatste scan rondt de controle zelf af: akkoord, afmelding in SRS en pakbon.{% else %}Akkoord geef je zelf met F2.{% endif %}
+      {% if snelmodus %}Laatste scan rondt de controle zelf af: akkoord, afmelding in SRS, label en pakbon.{% else %}Akkoord geef je zelf met F2.{% endif %}
       Sneltoetsen: <strong>Enter</strong> tellen · <strong>cijfer + Enter</strong> aantal ineens · <strong>F2</strong> akkoord · <strong>Esc</strong> terug naar het scanveld.
     </p>
+
+    {% if controle.is_deellevering %}
+      <div class="melding melding-let-op">Deellevering <strong>{{ controle.referentie }}</strong>: scan alleen wat er nu ligt en meegaat. De rest volgt later.</div>
+    {% endif %}
+
+    <div class="kratbalk">
+      <span class="label">Krat</span>
+      <span id="kratknoppen"></span>
+      <span class="mini">Nieuwe doos? Pak een krat erbij — dat wordt een eigen label en een eigen pakbon.</span>
+    </div>
     <form id="scanformulier" class="scanrij" autocomplete="off">
       <div style="flex:1">
         <span class="label">Barcode</span><br>

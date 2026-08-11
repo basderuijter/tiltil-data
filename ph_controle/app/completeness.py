@@ -39,8 +39,21 @@ class PhStatus:
 
     @property
     def mag_uit_ph(self) -> bool:
-        """Alleen een volledig gevulde PH mag leeggehaald worden."""
+        """De hele order mag eruit: alles ligt erin, niets te veel.
+
+        Een incomplete PH mag óók vrijgegeven worden, maar dan als
+        deellevering met een eigen referentie — zie `mag_deellevering`.
+        """
         return self.status == COMPLEET
+
+    @property
+    def mag_deellevering(self) -> bool:
+        """Er ligt genoeg voor een deellevering, maar de order is niet compleet.
+
+        Wachten tot alles binnen is kost dagen als één artikel achterblijft;
+        wat er ligt kan intussen naar de klant.
+        """
+        return self.status == INCOMPLEET and self.aantal_in_ph > 0
 
     @property
     def label(self) -> str:
@@ -133,11 +146,31 @@ class AkkoordCheck:
 
 
 def mag_akkoord(controle: Controle) -> AkkoordCheck:
-    """Akkoord kan alleen als alles geteld is én alles in goede staat is."""
+    """Akkoord kan alleen als alles geteld is én alles in goede staat is.
+
+    Bij een deellevering hoeft niet alles geteld te zijn — wat er ligt gaat
+    mee — maar het moet wel ergens over gaan en in goede staat zijn.
+    """
     redenen: list[str] = []
 
     if not controle.regels:
         redenen.append("Deze PH heeft geen orderregels.")
+
+    if controle.is_deellevering:
+        if controle.totaal_geteld == 0:
+            redenen.append("Scan eerst wat er wél meegaat in deze deellevering.")
+        for regel in controle.regels:
+            if regel.aantal_geteld > regel.aantal_verwacht:
+                redenen.append(
+                    f"{regel.omschrijving}: {regel.aantal_geteld} geteld, "
+                    f"{regel.aantal_verwacht} besteld."
+                )
+            if regel.conditie != "goed" and regel.aantal_geteld > 0:
+                redenen.append(
+                    f"{regel.omschrijving}: gemarkeerd als "
+                    f"{CONDITIE_LABELS[regel.conditie].lower()}."
+                )
+        return AkkoordCheck(mag_akkoord=not redenen, redenen=tuple(redenen))
 
     for regel in controle.regels:
         if regel.aantal_geteld < regel.aantal_verwacht:

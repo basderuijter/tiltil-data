@@ -43,9 +43,12 @@ def test_volledige_gang_van_scan_tot_akkoord(service: PhService, srs):
     assert srs.afmeldingen[0]["order_referentie"] == "WEB-104872"
     assert srs.haal_ph("G-PH.01").srs_status == "afgemeld"
 
-    ph, controle = service.pakbon_gegevens("G-PH.01")
+    ph, controle, kratten = service.pakbon_gegevens("G-PH.01")
     assert controle.totaal_geteld == 4
     assert ph.klant == "Marieke de Groot"
+    # Eén krat, dus één pakbon met alles erop.
+    assert len(kratten) == 1
+    assert sum(regel["aantal"] for regel in kratten[0]["regels"]) == 4
 
 
 def test_akkoord_geblokkeerd_bij_onvolledige_telling(service: PhService):

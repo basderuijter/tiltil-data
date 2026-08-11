@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block titel %}Pakbon {{ ph.order_referentie }}{% endblock %}
+{% block titel %}Pakbon {{ controle.referentie }}{% endblock %}
 
 {% block inhoud %}
-<div class="niet-printen" style="display:flex;gap:.6rem;margin-bottom:1rem;align-items:center">
+<div class="niet-printen" style="display:flex;gap:.6rem;margin-bottom:1rem;align-items:center;flex-wrap:wrap">
   <button class="knop knop-accent" onclick="window.print()">Printen</button>
   {% if volgende %}
     <a class="knop knop-akkoord" id="volgendeknop" href="/ph/{{ volgende }}">Volgende PH: {{ volgende }} (F2)</a>
@@ -13,13 +13,45 @@
   <a class="knop knop-stil" href="/">Overzicht</a>
 </div>
 
+<div class="niet-printen">
+  {% if controle.label_fout %}
+    <div class="melding melding-fout">
+      <strong>Label niet gelukt:</strong> {{ controle.label_fout }}
+      <form method="post" action="/ph/{{ ph.code }}/label/alsnog" style="margin-top:.6rem">
+        <button class="knop" type="submit">Opnieuw proberen</button>
+      </form>
+    </div>
+  {% elif controle.tracking %}
+    <div class="melding melding-ok">
+      <strong>{{ controle.tracking | length }} label(s) gemaakt</strong>
+      via {{ controle.zending_methode }}{% if controle.zending_vervoerder %} ({{ controle.zending_vervoerder }}){% endif %} ·
+      {{ controle.tracking | join(', ') }}
+      {% if not controle.kratverdeling_exact %}
+        <div class="mini">Let op: de kratindeling was niet op de Sendcloud-regels te leggen; de inhoud per doos is daar willekeurig verdeeld.</div>
+      {% endif %}
+      {% if controle.giftcards_overgeslagen %}
+        <div class="mini">{{ controle.giftcards_overgeslagen }} digitale regel(s) overgeslagen — die gaan niet in een doos.</div>
+      {% endif %}
+      <form method="post" action="/ph/{{ ph.code }}/label/opnieuw" style="margin-top:.6rem">
+        <button class="knop knop-stil" type="submit">Label opnieuw printen</button>
+      </form>
+    </div>
+  {% elif controle.giftcards_overgeslagen %}
+    <div class="melding melding-info">Alleen digitale artikelen — geen label nodig.</div>
+  {% endif %}
+</div>
+
+{% for krat in kratten %}
 <article class="pakbon">
   <div class="kop-rij">
     <div>
-      <span class="label">Pakbon</span>
-      <h1>{{ ph.order_referentie }}</h1>
+      <span class="label">Pakbon{% if controle.is_deellevering %} · deellevering{% endif %}</span>
+      <h1>{{ controle.referentie }}</h1>
       <div class="accentlijn"></div>
-      <div class="stil">Orderdatum {{ ph.orderdatum or '—' }} · PH {{ ph.code }}</div>
+      <div class="stil">
+        Orderdatum {{ ph.orderdatum or '—' }} · PH {{ ph.code }}
+        {% if controle.kratten > 1 %} · <strong>doos {{ krat.nummer }} van {{ krat.van }}</strong>{% endif %}
+      </div>
     </div>
     <div class="adresblok rechts">
       <strong>{{ instellingen.bedrijfsnaam }}</strong><br>
@@ -42,7 +74,10 @@
     </div>
     <div>
       <span class="label">Verzending</span>
-      <div class="adresblok">{{ ph.verzendmethode or '—' }}</div>
+      <div class="adresblok">
+        {{ controle.zending_methode or ph.verzendmethode or '—' }}
+        {% if krat.tracking %}<br><span class="mini">{{ krat.tracking }}</span>{% endif %}
+      </div>
     </div>
     <div>
       <span class="label">Gecontroleerd</span>
@@ -53,6 +88,10 @@
     </div>
   </div>
 
+  {% if controle.kratten > 1 %}
+    <div class="melding melding-info">Deze zending bestaat uit {{ krat.van }} dozen. Dit is doos {{ krat.nummer }}; hieronder staat wat er in díe doos zit.</div>
+  {% endif %}
+
   <table>
     <thead>
       <tr>
@@ -62,21 +101,28 @@
       </tr>
     </thead>
     <tbody>
-      {% for regel in controle.regels %}
+      {% for regel in krat.regels %}
       <tr>
         <td>{{ regel.omschrijving }}{% if regel.sku %}<div class="mini">{{ regel.sku }}</div>{% endif %}</td>
         <td class="mini">{{ regel.barcode }}</td>
-        <td class="rechts">{{ regel.aantal_geteld }}</td>
+        <td class="rechts">{{ regel.aantal }}</td>
       </tr>
       {% endfor %}
     </tbody>
     <tfoot>
       <tr>
-        <td colspan="2" class="rechts"><strong>Totaal aantal stuks</strong></td>
-        <td class="rechts"><strong>{{ controle.totaal_geteld }}</strong></td>
+        <td colspan="2" class="rechts"><strong>Totaal in deze doos</strong></td>
+        <td class="rechts"><strong>{{ krat.regels | sum(attribute='aantal') }}</strong></td>
       </tr>
     </tfoot>
   </table>
+
+  {% if openstaand %}
+    <p class="stil" style="margin-top:1.2rem"><strong>Volgt later:</strong>
+      {% for regel in openstaand %}{{ regel.omschrijving }} ({{ regel.aantal }}x){% if not loop.last %}, {% endif %}{% endfor %}.
+      Deze artikelen komen in een aparte zending; je betaalt daar niets extra voor.
+    </p>
+  {% endif %}
 
   {% if ph.opmerking %}
     <p class="stil" style="margin-top:1.2rem"><strong>Opmerking:</strong> {{ ph.opmerking }}</p>
@@ -86,9 +132,10 @@
 
   <div class="voet">
     <span>{{ instellingen.bedrijfsnaam }}{% if instellingen.btw_nummer %} · BTW {{ instellingen.btw_nummer }}{% endif %}</span>
-    <span>Pakbon {{ ph.order_referentie }}</span>
+    <span>Pakbon {{ controle.referentie }}{% if controle.kratten > 1 %} · doos {{ krat.nummer }}/{{ krat.van }}{% endif %}</span>
   </div>
 </article>
+{% endfor %}
 {% endblock %}
 
 {% block scripts %}

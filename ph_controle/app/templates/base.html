@@ -14,6 +14,7 @@
     <nav>
       <a class="navlink{% if request.url.path == '/' %} navlink-actief{% endif %}" href="/">Overzicht</a>
       <a class="navlink{% if request.url.path == '/hal' %} navlink-actief{% endif %}" href="/hal">Hal</a>
+      <a class="navlink{% if request.url.path == '/verzending' %} navlink-actief{% endif %}" href="/verzending">Losse zending</a>
       <form method="post" action="/medewerker" style="display:flex;gap:.5rem;align-items:center">
         <label class="label" for="naamveld">Medewerker</label>
         <input type="text" id="naamveld" name="naam" value="{{ medewerker }}" placeholder="je naam" autocomplete="off">

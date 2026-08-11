@@ -20,6 +20,7 @@
   const scanmelding = document.getElementById("scanmelding");
   const akkoordknop = document.getElementById("akkoordknop");
   const akkoordredenen = document.getElementById("akkoordredenen");
+  const kratknoppen = document.getElementById("kratknoppen");
 
   let controle = JSON.parse(dataElement.textContent);
   let laatsteBarcode = null;
@@ -62,11 +63,25 @@
     rij.appendChild(maakCel(artikel));
     rij.appendChild(maakCel(regel.barcode, "mini"));
 
+    const telcel = document.createElement("div");
     const teller = document.createElement("span");
     teller.className =
       "tel " + (regel.aantal_geteld >= regel.aantal_verwacht ? "tel-compleet" : "tel-open");
     teller.textContent = regel.aantal_geteld + " / " + regel.aantal_verwacht;
-    rij.appendChild(maakCel(teller, "rechts"));
+    telcel.appendChild(teller);
+    if (controle.kratten > 1) {
+      // Bij meerdere dozen moet zichtbaar zijn wat waar in ging.
+      const verdeling = document.createElement("div");
+      (regel.per_krat || []).forEach(function (aantal, index) {
+        if (!aantal) return;
+        const merk = document.createElement("span");
+        merk.className = "kratmerk";
+        merk.textContent = "K" + (index + 1) + ": " + aantal;
+        verdeling.appendChild(merk);
+      });
+      telcel.appendChild(verdeling);
+    }
+    rij.appendChild(maakCel(telcel, "rechts"));
 
     const knoppen = document.createElement("div");
     [["−", -1], ["+", 1]].forEach(function (paar) {
@@ -119,11 +134,30 @@
     return rij;
   }
 
+  function tekenKratten() {
+    if (!kratknoppen) return;
+    kratknoppen.innerHTML = "";
+    const totaal = controle.kratten || 1;
+    for (let nummer = 1; nummer <= totaal + 1; nummer += 1) {
+      const nieuw = nummer > totaal;
+      const knop = document.createElement("button");
+      knop.type = "button";
+      knop.className =
+        "kratknop" + (nummer === controle.actieve_krat ? " kratknop-actief" : "");
+      knop.textContent = nieuw ? "+ krat " + nummer : "krat " + nummer;
+      knop.addEventListener("click", function () {
+        zetKrat(nummer);
+      });
+      kratknoppen.appendChild(knop);
+    }
+  }
+
   function teken() {
     tabel.innerHTML = "";
     controle.regels.forEach(function (regel) {
       tabel.appendChild(tekenRegel(regel));
     });
+    tekenKratten();
 
     akkoordknop.disabled = !controle.mag_akkoord;
     akkoordredenen.innerHTML = "";
@@ -183,6 +217,20 @@
     focusScan();
   }
 
+  async function zetKrat(nummer) {
+    try {
+      const inhoud = await stuur("/api/ph/" + encodeURIComponent(code) + "/krat", {
+        krat: nummer,
+      });
+      controle = inhoud.controle;
+      teken();
+      meld("Krat " + nummer + ": alles wat je nu scant gaat in deze doos.", "info");
+    } catch (fout) {
+      meld(fout.message, "fout");
+    }
+    focusScan();
+  }
+
   async function verwerkScan(barcode) {
     try {
       const inhoud = await stuur("/api/ph/" + encodeURIComponent(code) + "/scan", {
@@ -225,7 +273,11 @@
 
   function misschienAfronden() {
     // Snelmodus: de scan die de order compleet maakt, rondt hem ook af.
-    if (snelmodus && controle.mag_akkoord) return geefAkkoord(true);
+    // Niet bij een deellevering: daar is "alles geteld" al waar na de eerste
+    // scan, en dan zou de doos vertrekken terwijl de rest nog op tafel ligt.
+    if (snelmodus && controle.mag_akkoord && !controle.is_deellevering) {
+      return geefAkkoord(true);
+    }
     return Promise.resolve();
   }
 

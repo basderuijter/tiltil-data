@@ -12,6 +12,23 @@ from datetime import datetime
 from pathlib import Path
 
 from .models import Controle, ControleRegel, Observatie, Onderzoek
+from .verzending.models import Label
+
+# Kolommen die later bij de controles zijn gekomen (kratten en verzending).
+# Bestaande databases worden bij het opstarten bijgewerkt.
+EXTRA_KOLOMMEN: dict[str, str] = {
+    "kratten": "INTEGER NOT NULL DEFAULT 1",
+    "actieve_krat": "INTEGER NOT NULL DEFAULT 1",
+    "is_deellevering": "INTEGER NOT NULL DEFAULT 0",
+    "levering_referentie": "TEXT NOT NULL DEFAULT ''",
+    "zending_methode": "TEXT NOT NULL DEFAULT ''",
+    "zending_vervoerder": "TEXT NOT NULL DEFAULT ''",
+    "tracking": "TEXT NOT NULL DEFAULT '[]'",
+    "labels_geprint": "INTEGER NOT NULL DEFAULT 0",
+    "label_fout": "TEXT NOT NULL DEFAULT ''",
+    "kratverdeling_exact": "INTEGER NOT NULL DEFAULT 1",
+    "giftcards_overgeslagen": "INTEGER NOT NULL DEFAULT 0",
+}
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS controles (
@@ -26,6 +43,19 @@ CREATE TABLE IF NOT EXISTS controles (
     regels TEXT NOT NULL DEFAULT '[]'
 );
 CREATE INDEX IF NOT EXISTS idx_controles_ph ON controles (ph_code);
+
+CREATE TABLE IF NOT EXISTS labels (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    controle_id INTEGER,
+    ph_code TEXT NOT NULL,
+    krat INTEGER NOT NULL DEFAULT 1,
+    parcel_id TEXT NOT NULL DEFAULT '',
+    mime_type TEXT NOT NULL DEFAULT 'application/pdf',
+    tracking_number TEXT NOT NULL DEFAULT '',
+    bestand_base64 TEXT NOT NULL DEFAULT '',
+    gemaakt_op TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_labels_controle ON labels (controle_id);
 
 CREATE TABLE IF NOT EXISTS ph_observaties (
     ph_code TEXT PRIMARY KEY,
@@ -77,6 +107,7 @@ def _regels_naar_json(regels: list[ControleRegel]) -> str:
                 "conditie": r.conditie,
                 "notitie": r.notitie,
                 "sku": r.sku,
+                "per_krat": r.per_krat,
             }
             for r in regels
         ],
@@ -95,7 +126,19 @@ class Opslag:
         self._verbinding = sqlite3.connect(self.pad, check_same_thread=False)
         self._verbinding.row_factory = sqlite3.Row
         self._verbinding.executescript(SCHEMA)
+        self._migreer()
         self._verbinding.commit()
+
+    def _migreer(self) -> None:
+        """Vul kolommen aan die er in een oudere database nog niet waren."""
+        bestaand = {
+            rij["name"] for rij in self._verbinding.execute("PRAGMA table_info(controles)")
+        }
+        for naam, definitie in EXTRA_KOLOMMEN.items():
+            if naam not in bestaand:
+                self._verbinding.execute(
+                    f"ALTER TABLE controles ADD COLUMN {naam} {definitie}"
+                )
 
     # -- controles -------------------------------------------------------
 
@@ -145,14 +188,19 @@ class Opslag:
     def bewaar_nieuw(self, controle: Controle) -> Controle:
         moment = controle.gestart_op or datetime.now()
         cursor = self._verbinding.execute(
-            "INSERT INTO controles (ph_code, order_referentie, medewerker, gestart_op, regels)"
-            " VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO controles (ph_code, order_referentie, medewerker, gestart_op,"
+            " regels, kratten, actieve_krat, is_deellevering, levering_referentie)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 controle.ph_code,
                 controle.order_referentie,
                 controle.medewerker,
                 moment.isoformat(timespec="seconds"),
                 _regels_naar_json(controle.regels),
+                controle.kratten,
+                controle.actieve_krat,
+                int(controle.is_deellevering),
+                controle.levering_referentie,
             ),
         )
         self._verbinding.commit()
@@ -165,7 +213,10 @@ class Opslag:
             raise ValueError("Controle zonder id kan niet bijgewerkt worden.")
         self._verbinding.execute(
             "UPDATE controles SET medewerker = ?, akkoord_op = ?, akkoord_door = ?,"
-            " afwijking_notitie = ?, regels = ? WHERE id = ?",
+            " afwijking_notitie = ?, regels = ?, kratten = ?, actieve_krat = ?,"
+            " is_deellevering = ?, levering_referentie = ?, zending_methode = ?,"
+            " zending_vervoerder = ?, tracking = ?, labels_geprint = ?, label_fout = ?,"
+            " kratverdeling_exact = ?, giftcards_overgeslagen = ? WHERE id = ?",
             (
                 controle.medewerker,
                 controle.akkoord_op.isoformat(timespec="seconds")
@@ -174,6 +225,17 @@ class Opslag:
                 controle.akkoord_door,
                 controle.afwijking_notitie,
                 _regels_naar_json(controle.regels),
+                controle.kratten,
+                controle.actieve_krat,
+                int(controle.is_deellevering),
+                controle.levering_referentie,
+                controle.zending_methode,
+                controle.zending_vervoerder,
+                json.dumps(controle.tracking, ensure_ascii=False),
+                int(controle.labels_geprint),
+                controle.label_fout,
+                int(controle.kratverdeling_exact),
+                controle.giftcards_overgeslagen,
                 controle.id,
             ),
         )
@@ -190,7 +252,75 @@ class Opslag:
             akkoord_door=rij["akkoord_door"],
             afwijking_notitie=rij["afwijking_notitie"],
             regels=_regels_uit_json(rij["regels"]),
+            kratten=int(rij["kratten"] or 1),
+            actieve_krat=int(rij["actieve_krat"] or 1),
+            is_deellevering=bool(rij["is_deellevering"]),
+            levering_referentie=rij["levering_referentie"] or "",
+            zending_methode=rij["zending_methode"] or "",
+            zending_vervoerder=rij["zending_vervoerder"] or "",
+            tracking=json.loads(rij["tracking"] or "[]"),
+            labels_geprint=bool(rij["labels_geprint"]),
+            label_fout=rij["label_fout"] or "",
+            kratverdeling_exact=bool(rij["kratverdeling_exact"]),
+            giftcards_overgeslagen=int(rij["giftcards_overgeslagen"] or 0),
         )
+
+    def leveringen(self, ph_code: str) -> list[Controle]:
+        """Alle akkoord gegeven leveringen van een PH, oudste eerst."""
+        rijen = self._verbinding.execute(
+            "SELECT * FROM controles WHERE ph_code = ? AND akkoord_op IS NOT NULL"
+            " ORDER BY id",
+            (ph_code,),
+        ).fetchall()
+        return [self._naar_controle(rij) for rij in rijen]
+
+    # -- labels ----------------------------------------------------------
+
+    def bewaar_labels(
+        self, controle_id: int, ph_code: str, labels: list[Label], eerste_krat: int = 1
+    ) -> None:
+        """Bewaar de labelbestanden, zodat opnieuw printen geen nieuw label kost."""
+        moment = _nu()
+        self._verbinding.executemany(
+            "INSERT INTO labels (controle_id, ph_code, krat, parcel_id, mime_type,"
+            " tracking_number, bestand_base64, gemaakt_op) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (
+                    controle_id,
+                    ph_code,
+                    eerste_krat + index,
+                    label.parcel_id,
+                    label.mime_type,
+                    label.tracking_number,
+                    label.file_base64,
+                    moment,
+                )
+                for index, label in enumerate(labels)
+            ],
+        )
+        self._verbinding.commit()
+
+    def labels(self, controle_id: int) -> list[Label]:
+        rijen = self._verbinding.execute(
+            "SELECT * FROM labels WHERE controle_id = ? ORDER BY krat, id", (controle_id,)
+        ).fetchall()
+        return [
+            Label(
+                parcel_id=rij["parcel_id"],
+                mime_type=rij["mime_type"],
+                file_base64=rij["bestand_base64"],
+                tracking_number=rij["tracking_number"],
+            )
+            for rij in rijen
+        ]
+
+    def label_kratten(self, controle_id: int) -> dict[int, str]:
+        """Per krat het trackingnummer, voor op de pakbon."""
+        rijen = self._verbinding.execute(
+            "SELECT krat, tracking_number FROM labels WHERE controle_id = ? ORDER BY krat",
+            (controle_id,),
+        ).fetchall()
+        return {int(rij["krat"]): rij["tracking_number"] for rij in rijen}
 
     # -- observaties -----------------------------------------------------
 

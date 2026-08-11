@@ -21,6 +21,14 @@ from .models import CONDITIES, Conditie, Controle, Observatie, Onderzoek, Ph
 from .signalen import Drempels, Signaal, beoordeel, haltoestand, vingerafdruk
 from .srs.base import SrsClient
 from .store import Opslag
+from .verzending import (
+    Krat,
+    KratRegel,
+    PrintError,
+    SendcloudError,
+    StationError,
+    Verzendservice,
+)
 
 
 class ControleFout(RuntimeError):
@@ -55,6 +63,8 @@ class AkkoordResultaat:
     srs_referentie: str
     doorlooptijd_seconden: float = 0.0
     volgende_ph: str = ""
+    labels: int = 0
+    label_fout: str = ""
 
 
 @dataclass
@@ -73,10 +83,12 @@ class PhService:
         srs: SrsClient,
         opslag: Opslag,
         instellingen: Instellingen | None = None,
+        verzending: Verzendservice | None = None,
     ):
         self.srs = srs
         self.opslag = opslag
         self.instellingen = instellingen or laad_instellingen()
+        self.verzending = verzending or Verzendservice(self.instellingen.verzending)
         self.drempels = Drempels(
             letop_uren=self.instellingen.letop_uren,
             vastloper_uren=self.instellingen.vastloper_uren,
@@ -234,7 +246,9 @@ class PhService:
         signaal, _ = self._beoordeel(ph, status, controle, onderzoek, nu)
         return ph, status, signaal, onderzoek
 
-    def start_controle(self, code: str, medewerker: str = "") -> Controle:
+    def start_controle(
+        self, code: str, medewerker: str = "", *, deellevering: bool = False
+    ) -> Controle:
         """Open de lopende controle, of begin een nieuwe op basis van SRS."""
         bestaand = self.opslag.open_controle(code)
         if bestaand is not None:
@@ -244,12 +258,22 @@ class PhService:
             return bestaand
 
         ph = self.srs.haal_ph(code)
+        eerdere = self.opslag.leveringen(code)
+        # Elke deellevering krijgt een eigen referentie: WEB-1042-1, WEB-1042-2.
+        # Ook de eerste, anders is niet te zien dat er meer volgt.
+        referentie = (
+            f"{ph.order_referentie}-{len(eerdere) + 1}"
+            if deellevering or eerdere
+            else ph.order_referentie
+        )
         controle = Controle(
             ph_code=ph.code,
             order_referentie=ph.order_referentie,
             regels=controle_regels_uit_ph(ph),
             medewerker=medewerker,
             gestart_op=datetime.now(),
+            is_deellevering=deellevering,
+            levering_referentie=referentie,
         )
         self.opslag.bewaar_nieuw(controle)
         self.opslag.log(
@@ -257,9 +281,41 @@ class PhService:
             "controle_gestart",
             controle_id=controle.id,
             medewerker=medewerker,
-            details={"order": ph.order_referentie, "regels": len(controle.regels)},
+            details={
+                "order": ph.order_referentie,
+                "regels": len(controle.regels),
+                "deellevering": deellevering,
+                "referentie": referentie,
+            },
         )
         return controle
+
+    def zet_krat(self, code: str, krat: int, medewerker: str = "") -> Controle:
+        """Vanaf nu gaan gescande artikelen in deze krat (= doos = label)."""
+        controle = self._actieve_controle(code)
+        if krat < 1:
+            raise ControleFout("Kratnummer begint bij 1.")
+        if krat > controle.kratten + 1:
+            raise ControleFout(
+                f"Krat {krat} bestaat nog niet; pak eerst krat {controle.kratten + 1}."
+            )
+        controle.actieve_krat = krat
+        controle.kratten = max(controle.kratten, krat)
+        self.opslag.bewaar(controle)
+        self.opslag.log(
+            code,
+            "krat_gewisseld",
+            controle_id=controle.id,
+            medewerker=medewerker or controle.medewerker,
+            details={"krat": krat, "kratten": controle.kratten},
+        )
+        return controle
+
+    def verwijder_lege_kratten(self, controle: Controle) -> None:
+        """Een aangemaakte maar leeg gebleven krat kost anders een leeg label."""
+        while controle.kratten > 1 and not controle.krat_regels(controle.kratten):
+            controle.kratten -= 1
+        controle.actieve_krat = min(controle.actieve_krat, controle.kratten)
 
     def _actieve_controle(self, code: str) -> Controle:
         controle = self.opslag.open_controle(code)
@@ -270,7 +326,8 @@ class PhService:
     def scan_barcode(self, code: str, barcode: str, medewerker: str = "") -> ScanResultaat:
         controle = self._actieve_controle(code)
         resultaat = scan(controle, barcode)
-        if resultaat.status == "geteld":
+        if resultaat.status == "geteld" and resultaat.regel is not None:
+            resultaat.regel.tel_in_krat(controle.actieve_krat)
             self.opslag.bewaar(controle)
         self.opslag.log(
             code,
@@ -305,6 +362,7 @@ class PhService:
                     f"Er zijn {regel.aantal_verwacht} stuks besteld; {aantal} kan niet."
                 )
             regel.aantal_geteld = aantal
+            regel.herverdeel(controle.actieve_krat)
         if conditie is not None:
             if conditie not in CONDITIES:
                 raise ControleFout(f"Onbekende conditie '{conditie}'.")
@@ -437,6 +495,7 @@ class PhService:
             )
             raise
 
+        self.verwijder_lege_kratten(controle)
         self.opslag.bewaar(controle)
         doorlooptijd = (
             (controle.akkoord_op - controle.gestart_op).total_seconds()
@@ -460,19 +519,222 @@ class PhService:
                 code, oplossing="Order alsnog gecontroleerd en afgemeld", medewerker=medewerker
             )
 
+        # Pas hierna het label. De controle is akkoord en SRS weet ervan; als
+        # Sendcloud plat ligt mag dat het proces niet ophouden.
+        aantal_labels = self._maak_labels(ph, controle, medewerker=medewerker)
+
         return AkkoordResultaat(
             controle=controle,
             srs_referentie=referentie,
             doorlooptijd_seconden=doorlooptijd,
             volgende_ph=self.volgende_klaar(behalve=code),
+            labels=aantal_labels,
+            label_fout=controle.label_fout,
         )
+
+    # -- labels ----------------------------------------------------------
+
+    def _kratten_van(self, controle: Controle) -> list[Krat]:
+        return [
+            Krat(
+                nummer=nummer,
+                regels=[
+                    KratRegel(
+                        omschrijving=regel.omschrijving,
+                        aantal=regel.aantal_in_krat(nummer),
+                        barcode=regel.barcode,
+                        sku=regel.sku,
+                    )
+                    for regel in controle.krat_regels(nummer)
+                ],
+            )
+            for nummer in range(1, controle.kratten + 1)
+        ]
+
+    def _maak_labels(self, ph: Ph, controle: Controle, *, medewerker: str = "") -> int:
+        """Maak en print de labels; fouten blokkeren de afmelding niet."""
+        if not self.verzending.actief:
+            return 0
+        if controle.id is None:
+            return 0
+
+        try:
+            resultaat = self.verzending.maak_labels(
+                ph.order_referentie,
+                self._kratten_van(controle),
+                station_id=self.instellingen.station_id,
+            )
+        except (SendcloudError, PrintError, StationError, ValueError) as fout:
+            controle.label_fout = str(fout)
+            self.opslag.bewaar(controle)
+            self.opslag.log(
+                controle.ph_code,
+                "label_mislukt",
+                controle_id=controle.id,
+                medewerker=medewerker,
+                details={"fout": str(fout)},
+            )
+            self.start_onderzoek(
+                controle.ph_code,
+                reden="Label niet gemaakt",
+                notitie=str(fout),
+                medewerker=medewerker,
+            )
+            return 0
+
+        controle.zending_methode = resultaat.methode_naam
+        controle.zending_vervoerder = resultaat.vervoerder
+        controle.tracking = resultaat.tracking
+        controle.labels_geprint = resultaat.geprint
+        controle.label_fout = resultaat.printfout
+        controle.kratverdeling_exact = resultaat.exacte_kratverdeling
+        controle.giftcards_overgeslagen = resultaat.overgeslagen_giftcards
+        self.opslag.bewaar_labels(controle.id, controle.ph_code, resultaat.labels)
+        self.opslag.bewaar(controle)
+        self.opslag.log(
+            controle.ph_code,
+            "label_gemaakt",
+            controle_id=controle.id,
+            medewerker=medewerker,
+            details={
+                "labels": len(resultaat.labels),
+                "tracking": resultaat.tracking,
+                "vervoerder": resultaat.vervoerder,
+                "geprint": resultaat.geprint,
+                "printfout": resultaat.printfout,
+                "kratverdeling_exact": resultaat.exacte_kratverdeling,
+                "giftcards_overgeslagen": resultaat.overgeslagen_giftcards,
+            },
+        )
+        return len(resultaat.labels)
+
+    def print_label_opnieuw(self, code: str, medewerker: str = "") -> int:
+        """Opnieuw printen van een bestaand label.
+
+        Een thermische printer verfrommelt labels; dat gebeurt vaker dan alle
+        andere storingen samen, dus dit moet één knop zijn en geen nieuw label
+        (dat zou een tweede zending aanmaken).
+        """
+        controle = self.opslag.laatste_controle(code)
+        if controle is None or controle.id is None or not controle.is_akkoord:
+            raise ControleFout(f"Voor PH {code} is nog geen levering afgerond.")
+
+        labels = self.opslag.labels(controle.id)
+        if not labels:
+            raise ControleFout(
+                "Er is nog geen label voor deze levering; maak het eerst aan."
+            )
+        try:
+            self.verzending.print_labels(labels, self.instellingen.station_id)
+        except (PrintError, StationError) as fout:
+            controle.label_fout = str(fout)
+            self.opslag.bewaar(controle)
+            raise ControleFout(f"Printen mislukt: {fout}") from fout
+
+        controle.labels_geprint = True
+        controle.label_fout = ""
+        self.opslag.bewaar(controle)
+        self.opslag.log(
+            code,
+            "label_opnieuw_geprint",
+            controle_id=controle.id,
+            medewerker=medewerker,
+            details={"labels": len(labels)},
+        )
+        return len(labels)
+
+    def maak_label_alsnog(self, code: str, medewerker: str = "") -> int:
+        """Tweede poging nadat Sendcloud of de printer eerder niet meewerkte."""
+        controle = self.opslag.laatste_controle(code)
+        if controle is None or controle.id is None or not controle.is_akkoord:
+            raise ControleFout(f"Voor PH {code} is nog geen levering afgerond.")
+        if self.opslag.labels(controle.id):
+            return self.print_label_opnieuw(code, medewerker)
+
+        ph = self.srs.haal_ph(code)
+        aantal = self._maak_labels(ph, controle, medewerker=medewerker)
+        if not aantal and controle.label_fout:
+            raise ControleFout(controle.label_fout)
+        return aantal
+
+    def losse_zending(
+        self,
+        adres,
+        *,
+        methode_code: str,
+        aantal: int = 1,
+        referentie: str = "",
+        medewerker: str = "",
+    ):
+        """Zending zonder PH: retour, nazending of klantenservicepakket."""
+        resultaat = self.verzending.losse_zending(
+            adres,
+            methode_code=methode_code,
+            aantal=aantal,
+            referentie=referentie,
+            station_id=self.instellingen.station_id,
+        )
+        self.opslag.log(
+            referentie or "los",
+            "losse_zending",
+            medewerker=medewerker,
+            details={
+                "naam": adres.naam,
+                "plaats": adres.plaats,
+                "labels": len(resultaat.labels),
+                "tracking": resultaat.tracking,
+                "geprint": resultaat.geprint,
+                "printfout": resultaat.printfout,
+            },
+        )
+        return resultaat
 
     # -- pakbon ----------------------------------------------------------
 
-    def pakbon_gegevens(self, code: str) -> tuple[Ph, Controle]:
+    def pakbon_gegevens(self, code: str) -> tuple[Ph, Controle, list[dict]]:
+        """Pakbon per krat: één vel per doos, met de inhoud van díe doos.
+
+        Eén pakbon in één van twee dozen laat de ontvanger van de andere doos
+        in het ongewisse, dus elke doos krijgt zijn eigen vel met 'doos 1 van 2'.
+        """
         controle = self.opslag.laatste_controle(code)
         if controle is None or not controle.is_akkoord:
             raise ControleFout(
                 f"Voor PH {code} is nog geen akkoord gegeven; er is dus geen pakbon."
             )
-        return self.srs.haal_ph(code), controle
+
+        tracking = self.opslag.label_kratten(controle.id) if controle.id else {}
+        kratten = [
+            {
+                "nummer": nummer,
+                "van": controle.kratten,
+                "regels": [
+                    {
+                        "omschrijving": regel.omschrijving,
+                        "barcode": regel.barcode,
+                        "sku": regel.sku,
+                        "aantal": regel.aantal_in_krat(nummer),
+                    }
+                    for regel in controle.krat_regels(nummer)
+                ],
+                "tracking": tracking.get(nummer, ""),
+            }
+            for nummer in range(1, controle.kratten + 1)
+        ]
+        return self.srs.haal_ph(code), controle, kratten
+
+    def nog_te_leveren(self, code: str) -> list[dict]:
+        """Wat er na de afgeronde leveringen nog van deze order openstaat."""
+        ph = self.srs.haal_ph(code)
+        geleverd: dict[str, int] = {}
+        for levering in self.opslag.leveringen(code):
+            for regel in levering.regels:
+                geleverd[regel.barcode] = geleverd.get(regel.barcode, 0) + regel.aantal_geteld
+        openstaand = []
+        for regel in ph.regels:
+            rest = regel.aantal_besteld - geleverd.get(regel.barcode, 0)
+            if rest > 0:
+                openstaand.append(
+                    {"omschrijving": regel.omschrijving, "barcode": regel.barcode, "aantal": rest}
+                )
+        return openstaand

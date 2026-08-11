@@ -6,6 +6,8 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .verzending.config import VerzendInstellingen, laad_verzendinstellingen
+
 BASIS = Path(__file__).resolve().parent.parent
 
 
@@ -67,6 +69,12 @@ class Instellingen:
     snelmodus: bool = field(default_factory=lambda: _bool("PH_SNELMODUS", True))
     # Controlescherm meteen openen als de medewerker bekend is.
     auto_start: bool = field(default_factory=lambda: _bool("PH_AUTO_START", True))
+
+    # --- Verzending (Sendcloud + labelprinter) ---
+    verzending: VerzendInstellingen = field(default_factory=laad_verzendinstellingen)
+    # Welke PH-tafel deze machine is, als er meerdere tafels met een eigen
+    # labelprinter zijn (zie config/stations.example.json).
+    station_id: str = field(default_factory=lambda: os.environ.get("STATION_ID", ""))
 
     # Gegevens op de pakbon
     bedrijfsnaam: str = field(

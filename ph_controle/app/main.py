@@ -22,6 +22,7 @@ from .signalen import TOESTAND_LABELS
 from .srs import maak_client
 from .srs.base import PhNietGevonden, SrsClient, SrsFout
 from .store import Opslag
+from .verzending import Adres, PrintError, SendcloudError, StationError, Verzendservice
 
 HIER = Path(__file__).resolve().parent
 COOKIE_MEDEWERKER = "ph_medewerker"
@@ -45,6 +46,7 @@ def _controle_json(ph: Ph, controle: Controle) -> dict:
                 "conditie_label": CONDITIE_LABELS[r.conditie],
                 "notitie": r.notitie,
                 "is_akkoord": r.is_akkoord,
+                "per_krat": list(r.per_krat),
             }
             for r in controle.regels
         ],
@@ -53,6 +55,10 @@ def _controle_json(ph: Ph, controle: Controle) -> dict:
         "mag_akkoord": check.mag_akkoord,
         "redenen": list(check.redenen),
         "is_akkoord": controle.is_akkoord,
+        "kratten": controle.kratten,
+        "actieve_krat": controle.actieve_krat,
+        "is_deellevering": controle.is_deellevering,
+        "referentie": controle.referentie,
     }
 
 
@@ -60,6 +66,7 @@ def maak_app(
     instellingen: Instellingen | None = None,
     srs: SrsClient | None = None,
     opslag: Opslag | None = None,
+    verzending: Verzendservice | None = None,
 ) -> FastAPI:
     instellingen = instellingen or laad_instellingen()
     app = FastAPI(title="TILTIL PH-controle")
@@ -69,9 +76,12 @@ def maak_app(
     app.state.instellingen = instellingen
     app.state.srs = srs or maak_client(instellingen)
     app.state.opslag = opslag or Opslag(instellingen.database)
+    app.state.verzending = verzending or Verzendservice(instellingen.verzending)
 
     def dienst() -> PhService:
-        return PhService(app.state.srs, app.state.opslag, instellingen)
+        return PhService(
+            app.state.srs, app.state.opslag, instellingen, app.state.verzending
+        )
 
     def medewerker_van(request: Request) -> str:
         return (request.cookies.get(COOKIE_MEDEWERKER) or "").strip()
@@ -218,10 +228,12 @@ def maak_app(
         )
 
     @app.post("/ph/{code}/start")
-    def start_controle(request: Request, code: str, naam: str = Form("")):
+    def start_controle(
+        request: Request, code: str, naam: str = Form(""), deellevering: str = Form("")
+    ):
         naam = (naam or medewerker_van(request)).strip()
         try:
-            dienst().start_controle(code, naam)
+            dienst().start_controle(code, naam, deellevering=deellevering == "1")
         except SrsFout as fout:
             return foutpagina(request, f"SRS niet bereikbaar: {fout}", status=502)
         antwoord = RedirectResponse(f"/ph/{code}", status_code=303)
@@ -277,6 +289,22 @@ def maak_app(
             return JSONResponse({"fout": str(fout)}, status_code=502)
         return JSONResponse({"controle": _controle_json(ph, controle)})
 
+    @app.post("/api/ph/{code}/krat")
+    async def api_krat(request: Request, code: str):
+        """Wisselen van krat: alles wat hierna gescand wordt gaat in deze doos."""
+        gegevens = await request.json()
+        service = dienst()
+        try:
+            controle = service.zet_krat(
+                code, int(gegevens.get("krat", 1)), medewerker_van(request)
+            )
+            ph = service.haal_ph(code)
+        except (ControleFout, ValueError) as fout:
+            return JSONResponse({"fout": str(fout)}, status_code=409)
+        except SrsFout as fout:
+            return JSONResponse({"fout": str(fout)}, status_code=502)
+        return JSONResponse({"controle": _controle_json(ph, controle)})
+
     @app.post("/api/ph/{code}/akkoord")
     def api_akkoord(request: Request, code: str):
         """Akkoord vanuit het scanscherm — gebruikt door snelmodus en F2."""
@@ -293,6 +321,8 @@ def maak_app(
                 "srs_referentie": resultaat.srs_referentie,
                 "seconden": round(resultaat.doorlooptijd_seconden),
                 "volgende_ph": resultaat.volgende_ph,
+                "labels": resultaat.labels,
+                "label_fout": resultaat.label_fout,
             }
         )
 
@@ -347,14 +377,87 @@ def maak_app(
             return foutpagina(request, str(fout), status=409)
         return RedirectResponse(f"/ph/{code}", status_code=303)
 
+    # -- labels ----------------------------------------------------------
+
+    @app.post("/ph/{code}/label/opnieuw")
+    def label_opnieuw(request: Request, code: str):
+        try:
+            dienst().print_label_opnieuw(code, medewerker_van(request))
+        except ControleFout as fout:
+            return foutpagina(request, str(fout), status=409)
+        return RedirectResponse(f"/ph/{code}/pakbon", status_code=303)
+
+    @app.post("/ph/{code}/label/alsnog")
+    def label_alsnog(request: Request, code: str):
+        try:
+            dienst().maak_label_alsnog(code, medewerker_van(request))
+        except ControleFout as fout:
+            return foutpagina(request, str(fout), status=409)
+        except SrsFout as fout:
+            return foutpagina(request, f"SRS niet bereikbaar: {fout}", status=502)
+        return RedirectResponse(f"/ph/{code}/pakbon", status_code=303)
+
+    # -- zending zonder PH ------------------------------------------------
+
+    @app.get("/verzending", response_class=HTMLResponse)
+    def verzending_scherm(request: Request, melding: str = "", gelukt: str = ""):
+        return pagina(
+            request,
+            "verzending.html",
+            melding=melding,
+            gelukt=gelukt,
+            verzending_actief=app.state.instellingen.verzending.actief,
+        )
+
+    @app.post("/verzending")
+    def verzending_maken(
+        request: Request,
+        ontvanger: str = Form(""),
+        adres: str = Form(""),
+        postcode: str = Form(""),
+        plaats: str = Form(""),
+        landcode: str = Form("NL"),
+        bedrijf: str = Form(""),
+        gewicht: float = Form(1.0),
+        methode: str = Form(""),
+        aantal: int = Form(1),
+        referentie: str = Form(""),
+    ):
+        try:
+            resultaat = dienst().losse_zending(
+                Adres(
+                    naam=ontvanger.strip(),
+                    adres=adres.strip(),
+                    postcode=postcode.strip(),
+                    plaats=plaats.strip(),
+                    landcode=(landcode or "NL").strip().upper(),
+                    bedrijf=bedrijf.strip(),
+                    gewicht_kg=gewicht,
+                ),
+                methode_code=methode.strip(),
+                aantal=aantal,
+                referentie=referentie.strip(),
+                medewerker=medewerker_van(request),
+            )
+        except (SendcloudError, PrintError, StationError, ValueError) as fout:
+            return RedirectResponse(f"/verzending?melding={fout}", status_code=303)
+
+        gelukt = f"{len(resultaat.labels)} label(s) gemaakt"
+        if resultaat.tracking:
+            gelukt += f" · {', '.join(resultaat.tracking)}"
+        if resultaat.printfout:
+            gelukt += f" · niet geprint: {resultaat.printfout}"
+        return RedirectResponse(f"/verzending?gelukt={gelukt}", status_code=303)
+
     # -- pakbon ----------------------------------------------------------
 
     @app.get("/ph/{code}/pakbon", response_class=HTMLResponse)
     def pakbon(request: Request, code: str, direct: int = 0):
         service = dienst()
         try:
-            ph, controle = service.pakbon_gegevens(code)
+            ph, controle, kratten = service.pakbon_gegevens(code)
             volgende = service.volgende_klaar(behalve=code)
+            openstaand = service.nog_te_leveren(code) if controle.is_deellevering else []
         except ControleFout as fout:
             return foutpagina(request, str(fout), status=409)
         except SrsFout as fout:
@@ -364,6 +467,8 @@ def maak_app(
             "pakbon.html",
             ph=ph,
             controle=controle,
+            kratten=kratten,
+            openstaand=openstaand,
             volgende=volgende,
             automatisch_printen=bool(direct),
         )

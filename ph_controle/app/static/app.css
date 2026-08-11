@@ -263,8 +263,30 @@ input[type="text"], input[type="number"], select, textarea {
 
 .scheiding { border: none; border-top: 1px solid var(--lijn); margin: 1.6rem 0; }
 
+/* Kratten */
+.kratbalk { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin: .2rem 0 .8rem; }
+.kratknop {
+  border: 1px solid var(--lijn);
+  background: #fff;
+  border-radius: 4px;
+  padding: 0.45rem 0.9rem;
+  font-family: "Poppins", system-ui, sans-serif;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.kratknop-actief { background: var(--donker-sage); color: #fff; border-color: var(--donker-sage); }
+.kratmerk {
+  display: inline-block;
+  background: var(--blauw-sage);
+  border-radius: 3px;
+  padding: 0 .35rem;
+  font-size: 0.7rem;
+  margin-right: 3px;
+}
+
 /* Pakbon */
 .pakbon { background: #fff; color: #151515; max-width: 210mm; margin: 1.5rem auto; padding: 18mm 16mm; }
+.pakbon + .pakbon { margin-top: 2rem; }
 .pakbon .kop-rij { display: flex; justify-content: space-between; align-items: flex-start; gap: 2rem; }
 .pakbon h1 { font-size: 1.5rem; }
 .pakbon .adresblok { font-size: 0.9rem; line-height: 1.45; }
@@ -277,4 +299,6 @@ input[type="text"], input[type="number"], select, textarea {
   body { background: #fff; }
   header.balk, .niet-printen { display: none !important; }
   .pakbon { margin: 0; padding: 0; max-width: none; }
+  /* Elke doos krijgt zijn eigen vel. */
+  .pakbon + .pakbon { break-before: page; page-break-before: always; margin-top: 0; }
 }

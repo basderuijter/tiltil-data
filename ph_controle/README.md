@@ -48,6 +48,48 @@ Snelmodus blijft veilig: de app geeft alleen zelf akkoord als élke regel volled
 geteld is *en* op "Goed" staat. Zodra je een afwijking aangeeft, stopt het
 automatische pad en gaat de PH in onderzoek.
 
+## Kratten, labels en pakbonnen
+
+De losse scan-app aan de inpaktafel is vervallen; alles wat met Sendcloud en
+labels te maken had zit nu in `app/verzending/`. De reden: de PH-medewerker legt
+de producten in kratten, **één krat is één doos is één label**, en op dat moment
+is bekend hoeveel labels er nodig zijn en wat er in elke doos zit. Pakbon en
+label gaan mee in de krat, dus ze kunnen niet van de goederen gescheiden raken.
+De inpaktafels hebben daarmee geen pc, scanner of scherm meer nodig — alleen de
+PH-tafels, met een A4-printer voor de pakbon en een labelprinter (ZD220).
+
+Tijdens de controle kies je met de kratknoppen in welke doos je scant. Bij
+akkoord gebeurt er, in deze volgorde:
+
+1. afmelding naar SRS — die gaat altijd voor;
+2. levering aanmaken in Sendcloud met alleen de getelde regels, één pakket per
+   krat (giftcards gaan eruit: die zijn in Shopify al digitaal afgemeld);
+3. label(s) printen op de labelprinter van deze tafel;
+4. pakbon per doos, met "doos 1 van 2" en de inhoud van díe doos.
+
+Gaat stap 2 of 3 mis, dan blijft de afmelding staan: de PH komt in onderzoek met
+de fout erbij, en met **Label alsnog maken** doe je een nieuwe poging. Een
+verfrommeld label print je opnieuw met **Label opnieuw printen** — dat gebruikt
+het opgeslagen labelbestand en maakt dus geen tweede zending aan.
+
+Zonder Sendcloud-sleutels slaat de app de labelstap over (de controle en de
+pakbon werken gewoon). Met `VERZENDING_DEMO=true` draait de hele keten op
+nepdata, inclusief printen naar de spooldirectory.
+
+### Deelleveringen
+
+Wachten tot alles binnen is kost dagen als één artikel achterblijft. Een
+incomplete PH kun je daarom vrijgeven als **deellevering**: je scant wat er ligt
+en die doos gaat weg met een eigen referentie (`WEB-104903-1`, `-2`, …). Op de
+pakbon staat wat er later volgt; SRS krijgt alleen de getelde aantallen. De rest
+van de order blijft in de PH staan en wordt een volgende levering. Snelmodus
+rondt een deellevering nooit vanzelf af — daar bepaal jij wanneer de doos vol is.
+
+### Zending zonder PH
+
+`/verzending` maakt een label voor een retour, nazending of klantenservice­pakket:
+adres invullen, methode en aantal pakketten kiezen, label eruit.
+
 ## Plattegrond van de hal
 
 `/hal` toont de wanden met alle vakken, kleur per toestand: leeg/beschikbaar,
@@ -155,17 +197,40 @@ akkoord via de API) en de REST-mapping met een nagebootste SRS-webservice.
 app/completeness.py   compleetheids- en akkoordregels (pure logica)
 app/signalen.py       let op / vastloper en de kleur van een vak (pure logica)
 app/hal.py            plattegrond: wanden, vakken, lege plekken
-app/service.py        het proces: openen, scannen, akkoord, onderzoek
+app/service.py        het proces: openen, scannen, akkoord, onderzoek, labels
 app/srs/              koppeling: base (protocol), mock (fixture), rest (webservice)
-app/store.py          SQLite: controles, waarnemingen, onderzoeken, audittrail
+app/verzending/       Sendcloud-client, printen, stations, kratverdeling
+app/store.py          SQLite: controles, labels, waarnemingen, onderzoeken, log
 app/main.py           FastAPI-routes en JSON-API voor scanscherm en plattegrond
-app/templates/        hal, overzicht, controlescherm, pakbon
+app/templates/        hal, overzicht, controlescherm, pakbon, losse zending
 config/srs_rest.json  endpoints en veldmapping van SRS
 scripts/demo_seed.py  demodata verouderen om de signalering te tonen
 ```
 
+`app/verzending/` komt uit de losse label-scanner (`apps/label-scanner` op
+branch `claude/sendcloud-label-scanner-tool-4wiicx`). Meeverhuisd zijn de
+Sendcloud-client, het printen, de stations, de modellen, de demodata en de
+17 gemockte Sendcloud-tests. Vervallen zijn de eigen webapp, de touchscreen-UI
+en de HTTP-callback tussen twee apps: binnen één app is dat een functieaanroep.
+De losse app zelf staat nog op die branch en kan daar opgeruimd worden.
+
 ## Nog open
 
 - `config/srs_rest.json` invullen met de echte SRS-endpoints en veldnamen.
-- Verzendlabel: de Sendcloud-stap kan aanhaken op het akkoordmoment in
-  `PhService.geef_akkoord`, naast de pakbon.
+- Drie Sendcloud-aanroepen zijn niet door documentatie gedekt en staan als
+  `VERIFY:` in `app/verzending/sendcloud.py`: het opzoeken van een order
+  (`GET /v3/orders`, valt terug op v2), de lijst met verzendopties
+  (`POST /v3/shipping-options`, valt terug op `SHIPPING_OPTIONS_FILE`) en de
+  losse zending (`POST /v3/shipments`, gebruikt door *Zending zonder PH*).
+- **Shopify-fulfilments schrijft deze app niet** — dat doet SRS. Twee punten uit
+  de overdracht horen daar thuis en zijn hier dus niet opgelost: geef bij het
+  schrijven van een fulfilment altijd de vervoerder mee (`company`, anders krijgt
+  de klant een kale trackingcode zonder link — nu het geval bij alle 30
+  onderzochte orders met tracking), en registreer per levering een
+  deelfulfilment met alleen de verzonden regels. De vervoerder is beschikbaar:
+  hij staat per levering in `controles.zending_vervoerder`, naast de
+  trackingnummers.
+- Labelformaat op de ZD220: begin met PDF op 72 dpi (het A6-label is vector, de
+  driver schaalt naar 203 dpi). Alleen als barcodes slecht scannen is ZPL de
+  moeite; dat gaat langs de driver heen en vraagt een raw printerwachtrij. Zet
+  het labelformaat op 102 × 150 mm en kalibreer de printer één keer.
