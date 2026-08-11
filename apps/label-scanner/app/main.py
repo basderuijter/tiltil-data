@@ -21,7 +21,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import demo
+from . import callback, demo
 from .config import Settings, get_settings
 from .models import LabelResult, Order, ShippingOption
 from .printing import PrintError, Printer
@@ -140,6 +140,17 @@ async def create_labels(
     except (PrintError, StationError) as exc:
         logger.warning("Printen mislukt voor order %s: %s", result.order_number, exc)
         result.print_error = str(exc)
+
+    # The tracking numbers drive the customer's fulfilment mail, so hand them
+    # to whoever owns the order. Never let that failure block the packer.
+    try:
+        await callback.announce(settings, app.state.http, result, request.station)
+    except callback.CallbackError as exc:
+        logger.error(
+            "Label van order %s niet doorgegeven: %s", result.order_number, exc
+        )
+        result.reported = False
+        result.report_error = str(exc)
 
     return result
 

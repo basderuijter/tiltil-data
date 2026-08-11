@@ -75,3 +75,7 @@ class LabelResult(BaseModel):
     shipping_option_name: str
     printed: bool = False
     print_error: str = ""
+    # Whether the owning system was told about this label. False here means the
+    # customer may never get a tracking mail, so it is worth monitoring.
+    reported: bool = True
+    report_error: str = ""

@@ -1,3 +1,6 @@
+import json
+
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -104,3 +107,64 @@ def test_stations_are_listed_when_configured(tmp_path):
 
 def test_single_table_setup_needs_no_station(client):
     assert client.get("/api/stations").json() == []
+
+
+def test_label_is_reported_to_the_owning_system(tmp_path, respx_mock):
+    route = respx_mock.post("https://orders.internal/labels").mock(
+        return_value=httpx.Response(200, json={"ok": True})
+    )
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        demo_mode=True,
+        print_backend="none",
+        spool_dir=tmp_path,
+        callback_url="https://orders.internal/labels",
+        callback_token="s3cret",
+    )
+    with TestClient(app) as test_client:
+        result = test_client.post(
+            "/api/labels",
+            json={
+                "order_number": "1042-1",
+                "shipping_option_code": "postnl:standard",
+                "quantity": 2,
+                "station": None,
+            },
+        ).json()
+    app.dependency_overrides.clear()
+
+    assert result["reported"] is True
+    sent = json.loads(route.calls.last.request.content)
+    assert sent["order_number"] == "1042-1"
+    assert [p["tracking_number"] for p in sent["parcels"]] == [
+        "3SDEMO00000001",
+        "3SDEMO00000002",
+    ]
+    assert route.calls.last.request.headers["authorization"] == "Bearer s3cret"
+
+
+def test_a_failed_report_never_blocks_the_label(tmp_path, respx_mock):
+    respx_mock.post("https://orders.internal/labels").mock(
+        return_value=httpx.Response(500)
+    )
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        demo_mode=True,
+        print_backend="none",
+        spool_dir=tmp_path,
+        callback_url="https://orders.internal/labels",
+    )
+    with TestClient(app) as test_client:
+        response = test_client.post(
+            "/api/labels",
+            json={
+                "order_number": "1042-1",
+                "shipping_option_code": "postnl:standard",
+                "quantity": 1,
+            },
+        )
+    app.dependency_overrides.clear()
+
+    # The parcel is real and the packer cannot fix an integration, so the label
+    # still succeeds — but the failure is visible for monitoring.
+    assert response.status_code == 200
+    assert response.json()["printed"] is True
+    assert response.json()["reported"] is False

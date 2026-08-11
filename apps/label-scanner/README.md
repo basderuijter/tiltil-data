@@ -112,6 +112,30 @@ changed by tapping it.
 Leave `STATIONS_FILE` unset for a single table — the app then prints to the
 printer in `.env` as before.
 
+## Partial deliveries and what the customer sees
+
+This app deliberately knows nothing about which items belong to which delivery.
+It labels whatever the scanned Sendcloud order contains, so a partial delivery
+works by giving it its own order (`1042-1`, `1042-2`) created by the system that
+knows what is in the box. One scan then equals one delivery.
+
+What it does do is hand the result back: set `CALLBACK_URL` and every finished
+label is POSTed as
+
+    {"order_number": "1042-1", "shipping_option_name": "PostNL Standard",
+     "station": "tafel-03", "printed": true,
+     "parcels": [{"parcel_id": "420", "tracking_number": "3SABC123"}]}
+
+Those tracking numbers are what reaches the customer: they drive the Shopify
+fulfilment, and with it the shipping mail and the order status page. Registering
+a *partial* fulfilment with only the shipped line items is what makes Shopify
+tell the customer that the rest is still to come — so the receiving system
+should create one fulfilment per delivery, never mark the order complete early.
+
+A failed callback does not fail the label: the parcel is real and a packer
+cannot fix an integration. It is logged at error level and returned as
+`reported: false`, because a lost tracking number is a customer left in the dark.
+
 ## Multicollo
 
 Sendcloud requires each box of a multicollo shipment to declare which items it

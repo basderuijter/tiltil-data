@@ -66,6 +66,14 @@ class Settings(BaseSettings):
     stations_file: Path | None = None
     spool_dir: Path = Path("/var/tmp/label-scanner")
 
+    # --- Reporting back --------------------------------------------------------
+    # Where to announce a finished label: the tracking numbers are what the
+    # customer eventually sees, so whichever system owns the Shopify
+    # fulfilment needs them. Left empty, nothing is reported.
+    callback_url: str = ""
+    # Sent as `Authorization: Bearer <token>` when set.
+    callback_token: str = ""
+
     # --- Behaviour -------------------------------------------------------------
     # How many parcel-count buttons to render on the touch screen.
     max_parcels: int = Field(default=6, ge=1, le=20)
