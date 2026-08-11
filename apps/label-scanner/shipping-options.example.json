@@ -1,6 +1,0 @@
-[
-  { "code": "postnl:letterbox", "name": "PostNL Brievenbuspakket", "carrier": "postnl" },
-  { "code": "postnl:standard", "name": "PostNL Standard", "carrier": "postnl" },
-  { "code": "postnl:service_point", "name": "PostNL Pakje Gemak", "carrier": "postnl" },
-  { "code": "dhl:parcel_connect", "name": "DHL Parcel Connect", "carrier": "dhl" }
-]
