@@ -151,6 +151,30 @@ A failed callback does not fail the label: the parcel is real and a packer
 cannot fix an integration. It is logged at error level and returned as
 `reported: false`, because a lost tracking number is a customer left in the dark.
 
+## One scan, one label
+
+When the delivery already carries a shipping method — which it does when the PH
+app sets it — there is nothing left to confirm at the packing table. Scanning
+the packing slip therefore makes and prints the label straight away. The address
+and tracking number appear on the result screen so the packer can still check
+what just came out.
+
+The confirmation screen (box count and method) still appears when the delivery
+has no shipping method, because then there is a real choice to make. Set
+`FAST_MODE=false` to always confirm.
+
+### It does not fit in one box
+
+Sendcloud fixes the number of parcels at the moment a delivery is announced, so
+an extra box cannot be added to a shipment that already exists. The *Past niet:
+extra label* button therefore creates a **separate shipment** to the same
+address: one parcel, its own tracking number, printed immediately and reported
+through the callback like any other label.
+
+That means the delivery ends up with two tracking numbers. A Shopify fulfilment
+holds several, so the owning system can attach both to the same delivery — but
+it has to expect that, rather than assume one label per delivery.
+
 ## Multicollo
 
 Sendcloud requires each box of a multicollo shipment to declare which items it

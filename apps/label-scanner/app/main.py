@@ -56,6 +56,7 @@ class OrderResponse(BaseModel):
     shipping_options: list[ShippingOption]
     max_parcels: int
     demo_mode: bool
+    fast_mode: bool
 
 
 class LabelRequest(BaseModel):
@@ -63,6 +64,12 @@ class LabelRequest(BaseModel):
     shipping_option_code: str
     quantity: int = Field(ge=1, le=20)
     # Which packing table asked. Only needed in a multi-table setup.
+    station: str | None = None
+
+
+class ExtraLabelRequest(BaseModel):
+    order_number: str
+    shipping_option_code: str
     station: str | None = None
 
 
@@ -95,6 +102,13 @@ async def read_order(
         shipping_options=options,
         max_parcels=settings.max_parcels,
         demo_mode=settings.demo_mode,
+        # Only worth skipping the confirmation when there is nothing to
+        # confirm: a method on the delivery and no label made for it yet.
+        fast_mode=(
+            settings.fast_mode
+            and bool(order.current_shipping_option_code)
+            and not order.already_announced
+        ),
     )
 
 
@@ -125,20 +139,37 @@ async def create_labels(
     if not labels:
         raise HTTPException(status_code=502, detail="Sendcloud gaf geen label terug.")
 
-    chosen = _option(options, request.shipping_option_code)
+    return await _finish(
+        settings, printer, order, options, labels,
+        request.shipping_option_code, request.order_number, request.station,
+    )
+
+
+async def _finish(
+    settings: Settings,
+    printer: Printer,
+    order: Order,
+    options: list[ShippingOption],
+    labels: list,
+    code: str,
+    fallback_number: str,
+    station_id: str | None,
+) -> LabelResult:
+    """Print the labels and report them. Shared by both label endpoints."""
+    chosen = _option(options, code)
     result = LabelResult(
-        order_number=order.order_number or request.order_number,
+        order_number=order.order_number or fallback_number,
         labels=labels,
-        shipping_option_name=chosen.name if chosen else request.shipping_option_code,
+        shipping_option_name=chosen.name if chosen else code,
         carrier=chosen.carrier if chosen else "",
-        shipping_option_code=request.shipping_option_code,
+        shipping_option_code=code,
     )
 
     # The label exists in Sendcloud at this point. A printer that is offline
     # must not read as "label mislukt", so report it separately and let the
     # packer reprint from the result screen.
     try:
-        await printer.print_labels(labels, _station(settings, request.station))
+        await printer.print_labels(labels, _station(settings, station_id))
         result.printed = True
     except (PrintError, StationError) as exc:
         logger.warning("Printen mislukt voor order %s: %s", result.order_number, exc)
@@ -147,7 +178,7 @@ async def create_labels(
     # The tracking numbers drive the customer's fulfilment mail, so hand them
     # to whoever owns the order. Never let that failure block the packer.
     try:
-        await callback.announce(settings, app.state.http, result, request.station)
+        await callback.announce(settings, app.state.http, result, station_id)
     except callback.CallbackError as exc:
         logger.error(
             "Label van order %s niet doorgegeven: %s", result.order_number, exc
@@ -156,6 +187,37 @@ async def create_labels(
         result.report_error = str(exc)
 
     return result
+
+
+@app.post("/api/labels/extra", response_model=LabelResult)
+async def create_extra_label(
+    request: ExtraLabelRequest,
+    settings: Settings = Depends(get_settings),
+    client: SendcloudClient = Depends(get_client),
+    printer: Printer = Depends(get_printer),
+) -> LabelResult:
+    """One more box for a delivery whose label is already printed."""
+    if settings.demo_mode:
+        order = demo.demo_order(request.order_number)
+        options = demo.demo_shipping_options(order)
+        labels = demo.demo_labels(order, 1)
+    else:
+        _require_credentials(settings)
+        try:
+            order = await client.find_order(request.order_number)
+            options = await client.shipping_options(order)
+            labels = await client.create_extra_label(
+                order, request.shipping_option_code
+            )
+        except OrderNotFound as exc:
+            raise HTTPException(status_code=404, detail=exc.message) from exc
+        except SendcloudError as exc:
+            raise HTTPException(status_code=502, detail=exc.message) from exc
+
+    return await _finish(
+        settings, printer, order, options, labels,
+        request.shipping_option_code, request.order_number, request.station,
+    )
 
 
 @app.post("/api/reprint")

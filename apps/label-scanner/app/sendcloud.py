@@ -32,6 +32,9 @@ from .models import Label, Order, OrderItem, ShippingOption
 CREATE_LABEL_SYNC = "/v3/orders/create-label-sync"
 CREATE_LABELS_ASYNC = "/v3/orders/create-labels-async"
 SHIPMENT = "/v3/shipments/{shipment_id}"
+# VERIFY: the create payload is modelled on the shipment schema that the
+# retrieve endpoint documents (to_address + ship_with + parcels).
+SHIPMENTS = "/v3/shipments"
 ORDER = "/v3/orders/{order_id}"
 CONTRACTS = "/v3/contracts"
 # VERIFY: the list-orders-per-integration path and its search parameter.
@@ -333,6 +336,49 @@ class SendcloudClient:
             file_base64=base64.b64encode(content).decode(),
             tracking_number=parcel.get("tracking_number", ""),
         )
+
+    async def create_extra_label(
+        self, order: Order, shipping_option_code: str
+    ) -> list[Label]:
+        """One more parcel for a delivery that is already on its way.
+
+        Sendcloud fixes the number of parcels at the moment a delivery is
+        announced, so an extra box cannot be added to the existing shipment.
+        This creates a separate shipment to the same address instead: its own
+        parcel with its own tracking number, which the owning system can attach
+        to the same fulfilment — a Shopify fulfilment holds several tracking
+        numbers.
+        """
+        body: dict[str, Any] = {
+            "to_address": {
+                "name": order.recipient_name,
+                "company_name": order.company_name,
+                "address_line_1": order.address,
+                "postal_code": order.postal_code,
+                "city": order.city,
+                "country_code": order.country_code,
+            },
+            "ship_with": {
+                "type": "shipping_option_code",
+                "properties": {
+                    "shipping_option_code": shipping_option_code,
+                    "contract_id": self._settings.contract_id,
+                },
+            },
+            "order_number": order.order_number,
+            "parcels": [{"weight": {"value": f"{order.weight_kg or 1:.3f}", "unit": "kg"}}],
+        }
+        if self._settings.sendcloud_integration_id:
+            body["integration_id"] = self._settings.sendcloud_integration_id
+
+        payload = await self._request("POST", SHIPMENTS, json=body)
+        data = payload.get("data") or {}
+        if errors := data.get("errors"):
+            raise SendcloudError(_join_errors(errors))
+        shipment_id = data.get("id")
+        if not shipment_id:
+            raise SendcloudError("Sendcloud gaf geen zending terug voor het extra label.")
+        return await self._labels_from_shipment(str(shipment_id), 1)
 
     async def contracts(self) -> list[dict[str, Any]]:
         """List the account's carrier contracts.

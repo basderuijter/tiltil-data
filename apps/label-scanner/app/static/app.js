@@ -20,6 +20,7 @@ const state = {
 };
 
 let toastTimer = null;
+let returnTimer = null;
 
 // --- helpers ---------------------------------------------------------------
 
@@ -68,6 +69,9 @@ $("form-scan").addEventListener("submit", async (event) => {
   try {
     const data = await api(`/api/orders/${encodeURIComponent(orderNumber)}`);
     renderOrder(data);
+    // The delivery already says how it ships, so there is nothing to confirm:
+    // one scan, one label. The address still appears on the result screen.
+    if (data.fast_mode) return makeLabels(1);
     showScreen("order");
   } catch (error) {
     toast(error.message);
@@ -224,20 +228,24 @@ function updateCreateButton() {
     : "Kies een verzendmethode";
 }
 
+async function makeLabels(quantity) {
+  const result = await api("/api/labels", {
+    method: "POST",
+    body: JSON.stringify({
+      order_number: state.order.order_number,
+      shipping_option_code: state.optionCode,
+      quantity,
+      station: state.station?.id ?? null,
+    }),
+  });
+  renderResult(result);
+  showScreen("result");
+}
+
 $("btn-create").addEventListener("click", async () => {
   if (!state.optionCode) return;
   try {
-    const result = await api("/api/labels", {
-      method: "POST",
-      body: JSON.stringify({
-        order_number: state.order.order_number,
-        shipping_option_code: state.optionCode,
-        quantity: state.quantity,
-        station: state.station?.id ?? null,
-      }),
-    });
-    renderResult(result);
-    showScreen("result");
+    await makeLabels(state.quantity);
   } catch (error) {
     toast(error.message);
   }
@@ -258,6 +266,9 @@ function renderResult(result) {
   $("result-detail").textContent = printed
     ? `${result.order_number} · ${result.shipping_option_name}`
     : result.print_error;
+  $("result-address").innerHTML = state.order
+    ? addressLines(state.order).map((line) => escapeHtml(line)).join(" · ")
+    : "";
 
   $("result-tracking").innerHTML = tracking
     .map((code) => `<li>${escapeHtml(code)}</li>`)
@@ -265,9 +276,29 @@ function renderResult(result) {
   $("btn-reprint").classList.toggle("hidden", printed);
 
   // Hands are full in the warehouse: after a clean print, go back to scanning
-  // on our own so the next slip can be scanned straight away.
-  if (printed) setTimeout(() => showScreen("scan"), 4000);
+  // on our own. Long enough to notice an extra box is needed and press the
+  // button, short enough not to slow the next slip down.
+  clearTimeout(returnTimer);
+  if (printed) returnTimer = setTimeout(() => showScreen("scan"), 8000);
 }
+
+// Discovered mid-pack that it does not fit: one more box, one more label.
+$("btn-extra").addEventListener("click", async () => {
+  clearTimeout(returnTimer);
+  try {
+    const result = await api("/api/labels/extra", {
+      method: "POST",
+      body: JSON.stringify({
+        order_number: state.order.order_number,
+        shipping_option_code: state.lastResult.shipping_option_code,
+        station: state.station?.id ?? null,
+      }),
+    });
+    renderResult(result);
+  } catch (error) {
+    toast(error.message);
+  }
+});
 
 $("btn-reprint").addEventListener("click", async () => {
   try {

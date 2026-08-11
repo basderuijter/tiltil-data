@@ -171,3 +171,27 @@ def test_a_failed_report_never_blocks_the_label(tmp_path, respx_mock):
     assert response.status_code == 200
     assert response.json()["printed"] is True
     assert response.json()["reported"] is False
+
+
+def test_an_extra_label_can_be_added_after_the_first_one(client, tmp_path):
+    # The packer finds mid-pack that it does not fit in one box.
+    first = client.post(
+        "/api/labels",
+        json={"order_number": "1042", "shipping_option_code": "postnl:standard", "quantity": 1},
+    ).json()
+    extra = client.post(
+        "/api/labels/extra",
+        json={"order_number": "1042", "shipping_option_code": "postnl:standard"},
+    )
+
+    assert extra.status_code == 200
+    assert len(first["labels"]) == 1
+    assert len(extra.json()["labels"]) == 1
+    assert extra.json()["printed"] is True
+
+
+def test_scanning_a_delivery_with_a_method_skips_the_confirmation(client):
+    payload = client.get("/api/orders/1042").json()
+
+    # Nothing left to confirm, so the UI makes the label straight away.
+    assert payload["fast_mode"] is True

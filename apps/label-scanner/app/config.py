@@ -79,6 +79,11 @@ class Settings(BaseSettings):
     callback_token: str = ""
 
     # --- Behaviour -------------------------------------------------------------
+    # Scanning a delivery that already carries a shipping method makes and
+    # prints its label straight away: one scan, one label, no confirmation.
+    # The confirmation screen still appears when the delivery has no method,
+    # because then there is a genuine choice to make.
+    fast_mode: bool = True
     # How many parcel-count buttons to render on the touch screen.
     max_parcels: int = Field(default=6, ge=1, le=20)
     # Serve fake orders and skip every outbound call. Lets you test the touch

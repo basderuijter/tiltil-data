@@ -443,3 +443,55 @@ async def test_lookup_still_gives_up_eventually():
 
     with pytest.raises(OrderNotFound):
         await client.find_order("1042")
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_extra_label_creates_a_separate_shipment_to_the_same_address():
+    # Sendcloud fixes the parcel count when a delivery is announced, so an
+    # extra box becomes its own shipment with its own tracking number.
+    route = respx.post(f"{BASE}/v3/shipments").mock(
+        return_value=httpx.Response(201, json={"data": {"id": "912"}})
+    )
+    respx.get(f"{BASE}/v3/shipments/912").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": {
+                    "parcels": [
+                        {
+                            "id": 777,
+                            "tracking_number": "3SEXTRA1",
+                            "documents": [
+                                {
+                                    "document_type": "label",
+                                    "link": f"{BASE}/v3/parcels/777/documents/label",
+                                }
+                            ],
+                        }
+                    ]
+                }
+            },
+        )
+    )
+    respx.get(f"{BASE}/v3/parcels/777/documents/label").mock(
+        return_value=httpx.Response(200, content=b"PDF")
+    )
+    client = await make_client()
+    order = Order(
+        id="669",
+        order_number="1042-1",
+        recipient_name="Jan Jansen",
+        address="Stadhuisplein 15",
+        postal_code="5341TW",
+        city="Oss",
+        country_code="NL",
+    )
+
+    labels = await client.create_extra_label(order, "postnl:standard")
+
+    assert [label.tracking_number for label in labels] == ["3SEXTRA1"]
+    body = json.loads(route.calls.last.request.content)
+    assert body["to_address"]["postal_code"] == "5341TW"
+    assert body["order_number"] == "1042-1"
+    assert len(body["parcels"]) == 1
