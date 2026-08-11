@@ -73,6 +73,10 @@ class LabelResult(BaseModel):
     order_number: str
     labels: list[Label]
     shipping_option_name: str
+    # The carrier behind the chosen option. Shopify needs this to turn a bare
+    # tracking number into a working track & trace link for the customer.
+    carrier: str = ""
+    shipping_option_code: str = ""
     printed: bool = False
     print_error: str = ""
     # Whether the owning system was told about this label. False here means the

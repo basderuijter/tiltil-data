@@ -133,8 +133,13 @@ What it does do is hand the result back: set `CALLBACK_URL` and every finished
 label is POSTed as
 
     {"order_number": "1042-1", "shipping_option_name": "PostNL Standard",
+     "shipping_option_code": "postnl:standard", "carrier": "postnl",
      "station": "tafel-03", "printed": true,
      "parcels": [{"parcel_id": "420", "tracking_number": "3SABC123"}]}
+
+The `carrier` is in there for a reason. Shopify only turns a tracking number
+into a clickable track & trace link when the fulfilment also names the carrier;
+without it the customer sees a code they cannot click.
 
 Those tracking numbers are what reaches the customer: they drive the Shopify
 fulfilment, and with it the shipping mail and the order status page. Registering

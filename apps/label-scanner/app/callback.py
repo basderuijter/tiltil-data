@@ -33,6 +33,10 @@ def build_payload(result: LabelResult, station_id: str | None) -> dict:
     return {
         "order_number": result.order_number,
         "shipping_option_name": result.shipping_option_name,
+        "shipping_option_code": result.shipping_option_code,
+        # Without a carrier, Shopify registers the tracking number but shows no
+        # link — the customer is left with a code they cannot click.
+        "carrier": result.carrier,
         "station": station_id,
         "printed": result.printed,
         "parcels": [

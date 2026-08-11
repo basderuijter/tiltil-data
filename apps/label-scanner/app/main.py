@@ -125,10 +125,13 @@ async def create_labels(
     if not labels:
         raise HTTPException(status_code=502, detail="Sendcloud gaf geen label terug.")
 
+    chosen = _option(options, request.shipping_option_code)
     result = LabelResult(
         order_number=order.order_number or request.order_number,
         labels=labels,
-        shipping_option_name=_option_name(options, request.shipping_option_code),
+        shipping_option_name=chosen.name if chosen else request.shipping_option_code,
+        carrier=chosen.carrier if chosen else "",
+        shipping_option_code=request.shipping_option_code,
     )
 
     # The label exists in Sendcloud at this point. A printer that is offline
@@ -222,11 +225,11 @@ def _require_credentials(settings: Settings) -> None:
         )
 
 
-def _option_name(options: list[ShippingOption], code: str) -> str:
+def _option(options: list[ShippingOption], code: str) -> ShippingOption | None:
     for option in options:
         if option.code == code:
-            return option.name
-    return code
+            return option
+    return None
 
 
 @app.get("/")

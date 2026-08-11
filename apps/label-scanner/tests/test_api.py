@@ -135,6 +135,9 @@ def test_label_is_reported_to_the_owning_system(tmp_path, respx_mock):
     assert result["reported"] is True
     sent = json.loads(route.calls.last.request.content)
     assert sent["order_number"] == "1042-1"
+    # Shopify needs the carrier to build a clickable track & trace link.
+    assert sent["carrier"] == "postnl"
+    assert sent["shipping_option_code"] == "postnl:standard"
     assert [p["tracking_number"] for p in sent["parcels"]] == [
         "3SDEMO00000001",
         "3SDEMO00000002",
