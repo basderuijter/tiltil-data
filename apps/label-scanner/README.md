@@ -1,5 +1,10 @@
 # Label scanner
 
+> **Deze app verhuist naar `ph_controle/`.** De PH-medewerker legt de producten
+> in kratten, dus daar is al bekend hoeveel labels er nodig zijn — een aparte
+> scan aan de inpaktafel voegt niets toe. Zie [HANDOVER.md](HANDOVER.md) voor de
+> opdracht. Wat hieronder staat blijft gelden voor de code die meeverhuist.
+
 Touch-screen tool for the warehouse: scan the order number on a packing slip,
 tap the number of parcels and the shipping method, and the Sendcloud label
 comes out of the label printer.
