@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% import "macros.html" as m %}
+{% block titel %}PH-overzicht{% endblock %}
+
+{% block inhoud %}
+<span class="label">Magazijn</span>
+<h1>PH-overzicht</h1>
+<div class="accentlijn"></div>
+
+{{ m.scanbalk("/", "scan een PH-label, order of artikel") }}
+{% if melding %}<div class="melding melding-fout">{{ melding }}</div>{% endif %}
+
+<div class="rooster">
+  <div class="kaart kpi">
+    <span class="label">Klaar om te controleren</span>
+    <span class="waarde">{{ stats.klaar }}</span>
+  </div>
+  <div class="kaart kpi">
+    <span class="label">Wordt nog gevuld</span>
+    <span class="waarde">{{ stats.onderweg }}</span>
+  </div>
+  <div class="kaart kpi">
+    <span class="label">Vastlopers</span>
+    <span class="waarde" {% if stats.vastlopers %}style="color:var(--rood)"{% endif %}>{{ stats.vastlopers }}</span>
+  </div>
+  <div class="kaart kpi">
+    <span class="label">Gem. controletijd vandaag</span>
+    <span class="waarde">{% if stats.gemiddelde_controletijd is not none %}{{ stats.gemiddelde_controletijd | round | int }}s{% else %}—{% endif %}</span>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>PH</th>
+      <th>Order</th>
+      <th>Klant</th>
+      <th>Compleetheid</th>
+      <th class="rechts">Stuks</th>
+      <th>Ligt er</th>
+      <th>Signaal</th>
+      <th>Controle</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for r in regels %}
+    <tr{% if r.signaal.is_vastloper %} class="regel-probleem"{% endif %}>
+      <td class="nowrap"><strong>{{ r.ph.code }}</strong></td>
+      <td class="nowrap">{{ r.ph.order_referentie }}</td>
+      <td>{{ r.ph.klant }}</td>
+      <td>
+        {{ m.statuspil(r.status) }}
+        {% if r.status.ontbrekend %}
+          <div class="mini">{{ r.status.aantal_ontbrekend }} stuk(s) nog niet in de PH</div>
+        {% endif %}
+      </td>
+      <td class="rechts nowrap">{{ r.status.aantal_in_ph }} / {{ r.status.aantal_besteld }}</td>
+      <td class="mini nowrap">{{ r.signaal.leeftijd }}</td>
+      <td>
+        {{ m.signaalpil(r.signaal) }}
+        {% if r.signaal.redenen %}<div class="mini">{{ r.signaal.redenen | join(' ') }}</div>{% endif %}
+      </td>
+      <td>{{ m.voortgangspil(r) }}</td>
+      <td class="rechts">
+        {% if r.is_afgerond %}
+          <a class="knop knop-stil" href="/ph/{{ r.ph.code }}/pakbon">Pakbon</a>
+        {% elif r.signaal.is_vastloper %}
+          <a class="knop knop-accent" href="/ph/{{ r.ph.code }}">Onderzoeken</a>
+        {% elif r.status.mag_uit_ph %}
+          <a class="knop knop-accent" href="/ph/{{ r.ph.code }}">Controleren</a>
+        {% else %}
+          <a class="knop knop-stil" href="/ph/{{ r.ph.code }}">Bekijken</a>
+        {% endif %}
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="9" class="stil">Geen PH's gevonden in SRS.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<p class="mini" style="margin-top:1rem">Bron: SRS ({{ instellingen.srs_backend }}). Let op na {{ instellingen.letop_uren | int }} uur, vastloper na {{ instellingen.vastloper_uren | int }} uur of {{ instellingen.stilstand_uren | int }} uur zonder voortgang. Een PH mag pas leeg als de status <em>compleet</em> is én de controle akkoord is.</p>
+{% endblock %}

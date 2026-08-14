@@ -1,0 +1,119 @@
+{
+  "_toelichting": "Demodata voor SRS_BACKEND=mock. Vervang of vul aan met een echte export om te oefenen.",
+  "phs": [
+    {
+      "code": "G-PH.01",
+      "order_referentie": "WEB-104872",
+      "order_id": "104872",
+      "klant": "Marieke de Groot",
+      "adres": "Zandvoortselaan 112",
+      "postcode_plaats": "2106 AR Heemstede",
+      "land": "Nederland",
+      "verzendmethode": "PostNL standaard",
+      "orderdatum": "07-08-2026",
+      "srs_status": "open",
+      "opmerking": "Graag als cadeau inpakken.",
+      "regels": [
+        {"barcode": "8719325104871", "sku": "HOME-VAAS-M", "omschrijving": "Vaas geribbeld zand M", "aantal_besteld": 2, "aantal_in_ph": 2, "picklocatie": "K.A.12"},
+        {"barcode": "8719325104888", "sku": "HOME-KAARS-01", "omschrijving": "Geurkaars vijg 220gr", "aantal_besteld": 1, "aantal_in_ph": 1, "picklocatie": "K.B.03"},
+        {"barcode": "8719325104895", "sku": "ACC-SJAAL-07", "omschrijving": "Sjaal wol gebroken wit", "aantal_besteld": 1, "aantal_in_ph": 1, "picklocatie": "G.C.21"}
+      ]
+    },
+    {
+      "code": "G-PH.02",
+      "order_referentie": "WEB-104903",
+      "order_id": "104903",
+      "klant": "Joost Verhagen",
+      "adres": "Prins Hendrikkade 45-2",
+      "postcode_plaats": "1012 AC Amsterdam",
+      "land": "Nederland",
+      "verzendmethode": "DHL pakket",
+      "orderdatum": "08-08-2026",
+      "srs_status": "open",
+      "regels": [
+        {"barcode": "8719325200114", "sku": "CLO-TRUI-M", "omschrijving": "Trui katoen taupe M", "aantal_besteld": 1, "aantal_in_ph": 1, "picklocatie": "G.A.04"},
+        {"barcode": "8719325200121", "sku": "CLO-BROEK-38", "omschrijving": "Broek linnen zand 38", "aantal_besteld": 2, "aantal_in_ph": 1, "picklocatie": "G.A.07"},
+        {"barcode": "8719325200138", "sku": "SIE-KETTING-3", "omschrijving": "Ketting goudkleurig 45cm", "aantal_besteld": 1, "aantal_in_ph": 0, "picklocatie": "G.E.02"}
+      ]
+    },
+    {
+      "code": "G-PH.04",
+      "order_referentie": "WEB-104930",
+      "order_id": "104930",
+      "klant": "Fleur Nieuwenhuis",
+      "adres": "Stationsweg 88",
+      "postcode_plaats": "9711 AA Groningen",
+      "land": "Nederland",
+      "verzendmethode": "PostNL standaard",
+      "orderdatum": "09-08-2026",
+      "srs_status": "open",
+      "regels": [
+        {"barcode": "8719325500118", "sku": "SIE-ARMBAND-2", "omschrijving": "Armband zilver fijn", "aantal_besteld": 1, "aantal_in_ph": 1, "picklocatie": "G.E.05"}
+      ]
+    },
+    {
+      "code": "G-PH.07",
+      "order_referentie": "WEB-104946",
+      "order_id": "104946",
+      "klant": "Ilse Molenaar",
+      "adres": "Kerkstraat 21",
+      "postcode_plaats": "5611 GH Eindhoven",
+      "land": "Nederland",
+      "verzendmethode": "DHL pakket",
+      "orderdatum": "10-08-2026",
+      "srs_status": "open",
+      "regels": [
+        {"barcode": "8719325600115", "sku": "CLO-JURK-40", "omschrijving": "Jurk linnen zwart 40", "aantal_besteld": 1, "aantal_in_ph": 1, "picklocatie": "G.B.11"},
+        {"barcode": "8719325600122", "sku": "ACC-TAS-04", "omschrijving": "Schoudertas leer cognac", "aantal_besteld": 1, "aantal_in_ph": 0, "picklocatie": "G.D.02"}
+      ]
+    },
+    {
+      "code": "K-PH.05",
+      "order_referentie": "WEB-104915",
+      "order_id": "104915",
+      "klant": "Sanne Bakker",
+      "adres": "Oude Gracht 9",
+      "postcode_plaats": "3511 AB Utrecht",
+      "land": "Nederland",
+      "verzendmethode": "PostNL brievenbus",
+      "orderdatum": "08-08-2026",
+      "srs_status": "open",
+      "regels": [
+        {"barcode": "8719325301112", "sku": "HOME-PLAID-01", "omschrijving": "Plaid gerecycled katoen", "aantal_besteld": 1, "aantal_in_ph": 1, "picklocatie": "K.D.15"},
+        {"barcode": "8719325301129", "sku": "HOME-KUSSEN-02", "omschrijving": "Kussenhoes 45x45 sage", "aantal_besteld": 3, "aantal_in_ph": 3, "picklocatie": "K.D.18"}
+      ]
+    },
+    {
+      "code": "K-PH.06",
+      "order_referentie": "WEB-104921",
+      "order_id": "104921",
+      "klant": "Peter Jansen",
+      "adres": "Dorpsstraat 3",
+      "postcode_plaats": "6511 AA Nijmegen",
+      "land": "Nederland",
+      "verzendmethode": "PostNL standaard",
+      "orderdatum": "09-08-2026",
+      "srs_status": "open",
+      "regels": [
+        {"barcode": "8719325400115", "sku": "HOME-SCHAAL-L", "omschrijving": "Schaal keramiek L", "aantal_besteld": 1, "aantal_in_ph": 0, "picklocatie": "K.C.09"},
+        {"barcode": "8719325400122", "sku": "HOME-DIENBLAD", "omschrijving": "Dienblad mangohout", "aantal_besteld": 1, "aantal_in_ph": 0, "picklocatie": "K.C.11"}
+      ]
+    },
+    {
+      "code": "K-PH.09",
+      "order_referentie": "WEB-104958",
+      "order_id": "104958",
+      "klant": "Diane Vos",
+      "adres": "Havenkade 6",
+      "postcode_plaats": "8861 AB Harlingen",
+      "land": "Nederland",
+      "verzendmethode": "PostNL standaard",
+      "orderdatum": "09-08-2026",
+      "srs_status": "open",
+      "opmerking": "Tweede kussen per ongeluk meegepickt?",
+      "regels": [
+        {"barcode": "8719325301129", "sku": "HOME-KUSSEN-02", "omschrijving": "Kussenhoes 45x45 sage", "aantal_besteld": 1, "aantal_in_ph": 2, "picklocatie": "K.D.18"}
+      ]
+    }
+  ]
+}

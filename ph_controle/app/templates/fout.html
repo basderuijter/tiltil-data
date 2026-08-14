@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block titel %}Er ging iets mis{% endblock %}
+{% block inhoud %}
+<span class="label">Melding</span>
+<h1>Dit kan nu niet</h1>
+<div class="accentlijn"></div>
+<div class="melding melding-fout">{{ boodschap }}</div>
+<p><a class="knop knop-stil" href="/">Terug naar het overzicht</a></p>
+{% endblock %}

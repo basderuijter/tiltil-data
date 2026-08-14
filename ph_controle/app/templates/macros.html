@@ -1,0 +1,22 @@
+{% macro statuspil(status) -%}
+<span class="pil pil-{{ status.status }}">{{ status.label }}</span>
+{%- endmacro %}
+
+{% macro signaalpil(signaal) -%}
+  {% if signaal.niveau != 'normaal' %}<span class="pil pil-{{ signaal.niveau }}">{{ signaal.label }}</span>{% else %}<span class="mini">—</span>{% endif %}
+{%- endmacro %}
+
+{% macro voortgangspil(regel) -%}
+  {% if regel.is_afgerond %}<span class="pil pil-afgerond">Afgemeld</span>
+  {% elif regel.in_controle %}<span class="pil pil-bezig">In controle</span>
+  {% else %}<span class="mini">—</span>{% endif %}
+{%- endmacro %}
+
+{% macro scanbalk(terug, plaatshouder) -%}
+<form method="post" action="/open" class="kaart scanbalk niet-printen" autocomplete="off">
+  <label class="label" for="zoekveld">Scan om te openen</label>
+  <input type="text" id="zoekveld" name="zoekterm" placeholder="{{ plaatshouder }}" autofocus autocomplete="off">
+  <input type="hidden" name="terug" value="{{ terug }}">
+  <button class="knop" type="submit">Openen</button>
+</form>
+{%- endmacro %}

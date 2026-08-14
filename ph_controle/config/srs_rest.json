@@ -1,0 +1,59 @@
+{
+  "_toelichting": [
+    "Koppelbestand voor SRS_BACKEND=rest. Vul endpoints en veldnamen in aan de hand",
+    "van de SRS-webservicedocumentatie; de app hoeft daarvoor niet aangepast te worden.",
+    "Veldwaarden zijn paden in het JSON-antwoord, bv. 'order.customer.name' of 'lines[0].code'.",
+    "De waarden hieronder zijn een voorbeeld en moeten geverifieerd worden tegen de echte API."
+  ],
+  "headers": {},
+  "endpoints": {
+    "lijst_phs": {
+      "method": "GET",
+      "path": "/api/v1/picklocations",
+      "params": { "type": "PH", "status": "open" },
+      "collection": "data"
+    },
+    "haal_ph": {
+      "method": "GET",
+      "path": "/api/v1/picklocations/{ph_code}",
+      "root": "data"
+    },
+    "meld_ph_gereed": {
+      "method": "POST",
+      "path": "/api/v1/picklocations/{ph_code}/complete"
+    }
+  },
+  "fields": {
+    "ph": {
+      "code": "locationCode",
+      "order_referentie": "orderReference",
+      "order_id": "orderId",
+      "klant": "shipping.name",
+      "adres": "shipping.street",
+      "postcode_plaats": "shipping.postalCity",
+      "land": "shipping.country",
+      "verzendmethode": "shippingMethod",
+      "opmerking": "remark",
+      "orderdatum": "orderDate",
+      "srs_status": "status",
+      "regels": "lines"
+    },
+    "regel": {
+      "barcode": "barcode",
+      "omschrijving": "description",
+      "aantal_besteld": "quantityOrdered",
+      "aantal_in_ph": "quantityInLocation",
+      "sku": "articleCode",
+      "picklocatie": "pickLocation"
+    }
+  },
+  "afmelding": {
+    "ph_veld": "locationCode",
+    "order_veld": "orderReference",
+    "medewerker_veld": "checkedBy",
+    "regels_veld": "lines",
+    "regel_velden": { "barcode": "barcode", "aantal": "quantity" },
+    "vaste_velden": { "status": "checked" },
+    "referentie_veld": "data.reference"
+  }
+}

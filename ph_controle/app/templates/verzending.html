@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block titel %}Losse zending{% endblock %}
+
+{% block inhoud %}
+<span class="label">Verzending</span>
+<h1>Zending zonder PH</h1>
+<div class="accentlijn"></div>
+
+<p class="stil">Voor een retour, een nazending of een pakketje van de klantenservice: vul het adres in, kies de methode en het label rolt eruit.</p>
+
+{% if not verzending_actief %}
+  <div class="melding melding-let-op">
+    Er zijn nog geen Sendcloud-sleutels ingesteld (<code>SENDCLOUD_PUBLIC_KEY</code> / <code>SENDCLOUD_SECRET_KEY</code>).
+    Zet <code>VERZENDING_DEMO=true</code> om te oefenen met nepdata.
+  </div>
+{% endif %}
+{% if melding %}<div class="melding melding-fout">{{ melding }}</div>{% endif %}
+{% if gelukt %}<div class="melding melding-ok">{{ gelukt }}</div>{% endif %}
+
+<form method="post" action="/verzending" class="kaart" autocomplete="off">
+  <div class="rooster">
+    <div>
+      <span class="label">Naam</span><br>
+      <input type="text" name="ontvanger" style="width:100%" required>
+    </div>
+    <div>
+      <span class="label">Bedrijf (optioneel)</span><br>
+      <input type="text" name="bedrijf" style="width:100%">
+    </div>
+    <div>
+      <span class="label">Adres en huisnummer</span><br>
+      <input type="text" name="adres" style="width:100%" required>
+    </div>
+    <div>
+      <span class="label">Postcode</span><br>
+      <input type="text" name="postcode" style="width:100%" required>
+    </div>
+    <div>
+      <span class="label">Plaats</span><br>
+      <input type="text" name="plaats" style="width:100%" required>
+    </div>
+    <div>
+      <span class="label">Landcode</span><br>
+      <input type="text" name="landcode" value="NL" style="width:100%" maxlength="2">
+    </div>
+  </div>
+
+  <hr class="scheiding">
+
+  <div class="rooster">
+    <div>
+      <span class="label">Verzendmethode</span><br>
+      <input type="text" name="methode" placeholder="postnl:standard" style="width:100%" required>
+      <div class="mini">De code uit Sendcloud, bijvoorbeeld <code>postnl:standard</code> of <code>dhl:parcel_connect</code>.</div>
+    </div>
+    <div>
+      <span class="label">Aantal pakketten</span><br>
+      <input type="number" name="aantal" value="1" min="1" max="20" style="width:100%">
+    </div>
+    <div>
+      <span class="label">Gewicht (kg)</span><br>
+      <input type="number" name="gewicht" value="1.0" min="0.1" step="0.1" style="width:100%">
+    </div>
+    <div>
+      <span class="label">Referentie (optioneel)</span><br>
+      <input type="text" name="referentie" placeholder="ordernummer of reden" style="width:100%">
+    </div>
+  </div>
+
+  <p style="margin-top:1rem">
+    <button class="knop knop-accent" type="submit">Label maken en printen</button>
+  </p>
+</form>
+{% endblock %}
